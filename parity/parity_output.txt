@@ -1,0 +1,24 @@
+last_censored=False seed=0 censored=0.47 tau_widest=35.9 t_max=35.9 | max|diff| widest=1.11e-15 narrower=1.11e-15
+    c_td@0.2     ours= 0.785543 ref= 0.785543
+    c_td@0.4     ours= 0.791679 ref= 0.791679
+    c_td@1e-08   ours= 0.785543 ref= 0.785543
+    ibll@0.2     ours=-0.307856 ref=-0.307856
+    ibll@0.4     ours=-0.340252 ref=-0.340252
+    ibll@1e-08   ours=-0.199019 ref=-0.199019
+    ibs@0.2      ours= 0.097630 ref= 0.097630
+    ibs@0.4      ours= 0.109488 ref= 0.109488
+    ibs@1e-08    ours= 0.060156 ref= 0.060156
+last_censored=False seed=1 censored=0.48 tau_widest=53.6 t_max=53.6 | max|diff| widest=3.33e-16 narrower=3.33e-16
+last_censored=False seed=2 censored=0.50 tau_widest=29.0 t_max=29.0 | max|diff| widest=1.94e-15 narrower=2.05e-15
+last_censored=True seed=0 censored=0.47 tau_widest=20.6 t_max=35.9 | max|diff| widest=1.29e-01 narrower=1.11e-15
+    c_td@0.2     ours= 0.785543 ref= 0.785543
+    c_td@0.4     ours= 0.791679 ref= 0.791679
+    c_td@1e-08   ours= 0.785543 ref= 0.785543
+    ibll@0.2     ours=-0.307914 ref=-0.307914
+    ibll@0.4     ours=-0.341044 ref=-0.341044
+    ibll@1e-08   ours=-0.303910 ref=-0.432551
+    ibs@0.2      ours= 0.097767 ref= 0.097767
+    ibs@0.4      ours= 0.109760 ref= 0.109760
+    ibs@1e-08    ours= 0.096313 ref= 0.137890
+last_censored=True seed=1 censored=0.48 tau_widest=28.7 t_max=53.6 | max|diff| widest=9.53e-02 narrower=3.33e-16
+last_censored=True seed=2 censored=0.51 tau_widest=25.5 t_max=29.0 | max|diff| widest=8.38e-04 narrower=2.11e-15
