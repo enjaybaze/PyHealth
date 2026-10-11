@@ -43,8 +43,15 @@ python -m unittest tests.core.test_model_mode tests.core.test_logistic_regressio
   `test_model_mode` (3). They are environment-related, not code failures.
 - `tests/core/test_survival_mdn.py`: 7/7 pass.
 
-The full `tests/core` suite (`make test` in CI) did not complete in the
-sandbox; rerun it on a machine with internet access before opening the PR.
+The full `tests/core` suite did not complete in the sandbox. NJ ran it on
+the L4 VM (conda env `survmdn`, Python 3.13) on Oct 10-11, 2026:
+
+```bash
+python -m unittest discover -t tests -s tests/core -p 'test_*.py'
+```
+
+Result: **1,470 tests ran in 581 s, all OK (89 skipped).** Rerun it on the
+VM before opening the PR.
 
 ## PR checker status
 
