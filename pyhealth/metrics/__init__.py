@@ -21,6 +21,12 @@ from .multiclass import multiclass_metrics_fn
 from .multilabel import multilabel_metrics_fn
 from .ranking import ranking_metrics_fn
 from .regression import regression_metrics_fn
+from .survival_curve import (
+    concordance_td,
+    integrated_binomial_loglik_td,
+    integrated_brier_score_td,
+    survival_curve_metrics_fn,
+)
 
 __all__ = [
     "ComprehensivenessMetric",
@@ -34,13 +40,17 @@ __all__ = [
     "compute_discriminator_privacy",
     "compute_mle",
     "compute_prevalence_metrics",
+    "concordance_td",
     "ddi_rate_score",
     "evaluate_attribution",
     "evaluate_synthetic_ehr",
     "fairness_metrics_fn",
+    "integrated_binomial_loglik_td",
+    "integrated_brier_score_td",
     "multiclass_metrics_fn",
     "multilabel_metrics_fn",
     "paired_bootstrap_diff",
     "ranking_metrics_fn",
     "regression_metrics_fn",
+    "survival_curve_metrics_fn",
 ]
