@@ -54,6 +54,7 @@ from .cosmic import COSMICDataset
 from .covid19_cxr import COVID19CXRDataset
 from .dreamt import DREAMTDataset
 from .ehrshot import EHRShotDataset
+from .gbsg import GBSGDataset as GBSGDataset, prepare_gbsg_csv as prepare_gbsg_csv
 from .eicu import eICUDataset
 from .isruc import ISRUCDataset
 from .medical_transcriptions import MedicalTranscriptionsDataset

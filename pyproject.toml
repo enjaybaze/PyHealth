@@ -63,6 +63,9 @@ keywords = [
 ]
 
 [project.optional-dependencies]
+survival-data = [
+  "h5py>=3.11",
+]
 graph = [
   "torch-geometric>=2.6.0",
 ]
