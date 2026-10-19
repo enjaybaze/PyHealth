@@ -90,7 +90,8 @@ class SurvivalMDN(BaseModel):
             the matching Jacobian term is added back, so the loss and
             densities stay in the dataset's original time units. Set it
             to a training-set statistic (for example the median observed
-            time). Default 1.0.
+            time). Stored as a buffer, so saved checkpoints carry it and
+            loading one restores the value it was trained with. Default 1.0.
 
     Examples:
         >>> from pyhealth.datasets import create_sample_dataset
@@ -157,7 +158,10 @@ class SurvivalMDN(BaseModel):
         self.batch_norm = batch_norm
         self.init = init
         self.dropout = dropout
-        self.time_scale = float(time_scale)
+        # A buffer, not a plain float, so it is saved in checkpoints.
+        self.register_buffer(
+            "time_scale", torch.tensor(float(time_scale), dtype=torch.float32)
+        )
 
         input_dim = int(torch.as_tensor(dataset[0][self.feature_key]).numel())
         layers: list[nn.Module] = []
@@ -205,7 +209,7 @@ class SurvivalMDN(BaseModel):
         else:
             y = torch.log(u)
             log_jac = -y
-        return y, log_jac - math.log(self.time_scale)
+        return y, log_jac - torch.log(self.time_scale)
 
     @staticmethod
     def _align(params: Params, times: torch.Tensor) -> tuple[Params, torch.Tensor]:

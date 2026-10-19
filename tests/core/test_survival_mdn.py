@@ -233,6 +233,19 @@ class TestSurvivalMDNModel(unittest.TestCase):
         with self.assertRaises(ValueError):
             self._model(init="residual")
 
+    def test_checkpoint_carries_time_scale(self):
+        trained = self._model(num_components=3, time_scale=7.0)
+        self.assertIn("time_scale", trained.state_dict())
+        rebuilt = self._model(num_components=3, time_scale=1.0)
+        rebuilt.load_state_dict(trained.state_dict())
+        self.assertEqual(float(rebuilt.time_scale), 7.0)
+        grid = torch.tensor([1.0, 5.0, 20.0])
+        features = self.batch["features"][:4]
+        torch.testing.assert_close(
+            rebuilt.predict_survival(features, grid),
+            trained.predict_survival(features, grid),
+        )
+
     def test_predict_survival_uses_eval_mode(self):
         model = self._model(num_components=3)
         model.train()
