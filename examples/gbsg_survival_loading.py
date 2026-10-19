@@ -7,9 +7,18 @@ Real local benchmark, with a small Trainer/checkpoint check:
     python examples/gbsg_survival_loading.py --source-h5 /data/gbsg.h5 \
         --output-dir /tmp/gbsg-real --epochs 5
 
+Paper protocol, using one of the Survival MDN authors' ten released splits
+(download their data/gbsg folder yourself; it is not redistributed here):
+    python examples/gbsg_survival_loading.py --source-h5 /data/gbsg.h5 \
+        --released-dir /data/Survival-MDN/data/gbsg --repeat 1 \
+        --output-dir /tmp/gbsg-paper-1 --epochs 5
+
 An existing prepared CSV directory can instead be supplied with --root.
-Use a fresh output directory for each run. This is the alternative grouped
-source-unit protocol, not the authors' released splits or paper reproduction.
+Use a fresh output directory for each run. Without --released-dir this runs
+the alternative grouped source-unit protocol (seeded 80/10/10 splits,
+training-only standardization, times in months). With --released-dir it
+follows the authors' protocol: their split memberships, raw features, times
+divided by the cohort maximum plus 0.002, and test-set C^td/IBS/IBLL.
 """
 
 import argparse
@@ -23,7 +32,14 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from pyhealth.datasets import GBSGDataset, get_dataloader, prepare_gbsg_csv
+from pyhealth.datasets import (
+    GBSGDataset,
+    gbsg_paper_time_transform,
+    gbsg_released_split_ids,
+    get_dataloader,
+    prepare_gbsg_csv,
+)
+from pyhealth.metrics import survival_curve_metrics_fn
 from pyhealth.models import SurvivalMDN
 from pyhealth.tasks import SurvivalTimeToEventGBSG
 from pyhealth.trainer import Trainer
@@ -55,11 +71,25 @@ def write_synthetic_csv(root: Path, n: int = 40) -> None:
 
 
 def load_gbsg_splits(
-    root: Path, output_dir: Path, seed: int = 1, split_source_ids=None
+    root: Path,
+    output_dir: Path,
+    seed: int = 1,
+    split_source_ids=None,
+    released_dir: Path | None = None,
+    repeat: int = 1,
 ):
-    """Build the actual loader/task path and persist its fitted configuration."""
+    """Build the actual loader/task path and persist its fitted configuration.
+
+    With ``released_dir``, memberships come from the authors' released split
+    ``repeat`` and the paper's preprocessing is used instead of the grouped
+    protocol; ``seed`` and ``split_source_ids`` are then not used.
+    """
+    if released_dir is not None and split_source_ids is not None:
+        raise ValueError("Use released_dir or split_source_ids, not both")
     output_dir.mkdir(parents=True, exist_ok=True)
     dataset = GBSGDataset(root=str(root), cache_dir=output_dir / "cache", num_workers=1)
+    if released_dir is not None:
+        return _load_released_split(dataset, root, output_dir, released_dir, repeat)
     raw_task = SurvivalTimeToEventGBSG()
     raw = [raw_task(patient)[0] for patient in dataset.iter_patients()]
     # Full source signatures, not assumed real patient identities. Grouping
@@ -144,6 +174,47 @@ def load_gbsg_splits(
     return parts, metadata
 
 
+def _load_released_split(dataset, root, output_dir, released_dir, repeat):
+    """Authors' protocol: released memberships, raw features, paper times."""
+    memberships = gbsg_released_split_ids(root, released_dir, repeat)
+    transform = gbsg_paper_time_transform(root)
+    samples = dataset.set_task(SurvivalTimeToEventGBSG(**transform))
+    parts = tuple(
+        samples.subset(
+            [
+                index
+                for pid in memberships[name]
+                for index in samples.patient_to_index[pid]
+            ]
+        )
+        for name in ("train", "valid", "test")
+    )
+    metadata = {
+        "protocol": f"authors-released-repeat-{repeat}",
+        "repeat": repeat,
+        "csv_sha256": hashlib.sha256((root / "gbsg.csv").read_bytes()).hexdigest(),
+        "feature_order": [f"x{i}" for i in range(7)],
+        "time_unit": "months / cohort maximum + 0.002 (authors' convention)",
+        "event": "1 observed; 0 censored",
+        "identity": "source group/row surrogates, not original patient IDs",
+        "split_source_ids": memberships,
+        "counts": {name: len(part) for name, part in zip(memberships, parts)},
+        "preprocessing": {"features": "raw (no scaling)", **transform},
+        "model": {
+            "time_scale": 1.0,
+            "transform": "softplus",
+            "num_components": 5,
+            "hidden_dim": 32,
+            "num_layers": 3,
+            "batch_norm": True,
+            "init": "fixed",
+            "dropout": 0.0,
+        },
+    }
+    (output_dir / "run.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    return parts, metadata
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
@@ -155,6 +226,12 @@ def main():
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument(
+        "--released-dir", type=Path, help="Authors' released GBSG .npz folder"
+    )
+    parser.add_argument(
+        "--repeat", type=int, default=1, help="Released split number, 1-10"
+    )
+    parser.add_argument(
         "--epochs", type=int, default=0, help="Optional small Trainer check"
     )
     args = parser.parse_args()
@@ -165,7 +242,13 @@ def main():
         write_synthetic_csv(root)
     elif args.source_h5:
         prepare_gbsg_csv(args.source_h5, root)
-    parts, metadata = load_gbsg_splits(root, args.output_dir, args.seed)
+    parts, metadata = load_gbsg_splits(
+        root,
+        args.output_dir,
+        args.seed,
+        released_dir=args.released_dir,
+        repeat=args.repeat,
+    )
     train, valid, test = parts
     batch = next(iter(get_dataloader(train, batch_size=min(8, len(train)))))
     print("Counts:", metadata["counts"])
@@ -221,6 +304,17 @@ def main():
             "final_loss": final,
             "checkpoint_max_error": float((predictions - reloaded).abs().max()),
         }
+        if args.released_dir is not None:
+            times, events = heldout["survival"][:, 0], heldout["survival"][:, 1]
+
+            def predict(grid):
+                grid = torch.as_tensor(grid, dtype=torch.float32)
+                return model.predict_survival(heldout["features"], grid).numpy()
+
+            metadata["test_metrics"] = survival_curve_metrics_fn(
+                times.numpy(), events.numpy(), predict
+            )
+            print("Test metrics:", metadata["test_metrics"])
         (args.output_dir / "run.json").write_text(json.dumps(metadata, indent=2) + "\n")
         print("Validation:", metadata["validation"])
 

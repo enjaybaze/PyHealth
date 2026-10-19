@@ -13,6 +13,132 @@ from .base_dataset import BaseDataset
 
 _COLUMNS = ("source_id", "source_group", "source_row", *GBSG_FEATURES, "time", "event")
 
+# The Survival MDN authors' released GBSG files store time / max_time + 0.001,
+# and their data loader adds another 0.001 before training and evaluation.
+GBSG_PAPER_TIME_OFFSET = 0.002
+_RELEASED_FILE_OFFSET = 0.001
+_SPLITS = ("train", "valid", "test")
+
+
+def _read_gbsg_csv(root: str | Path) -> tuple[list[str], np.ndarray, np.ndarray]:
+    """Return source IDs, features [N, 7] and outcomes [N, 2] from gbsg.csv."""
+    path = Path(root).expanduser() / "gbsg.csv"
+    ids, features, outcomes = [], [], []
+    with path.open(newline="") as stream:
+        for row in csv.DictReader(stream):
+            x, time, event = _gbsg_values(row, row["source_id"])
+            ids.append(row["source_id"])
+            features.append(x)
+            outcomes.append((time, event))
+    if not ids:
+        raise ValueError("GBSG CSV must contain at least one source row")
+    return ids, np.asarray(features, dtype=float), np.asarray(outcomes, dtype=float)
+
+
+def gbsg_paper_time_transform(root: str | Path) -> dict:
+    """Time conversion used by the Survival MDN authors for GBSG.
+
+    Their released split files store each time divided by the largest time
+    in the full 2,232-record cohort, plus 0.001, and their loader adds a
+    further 0.001. Passing the result to
+    :class:`~pyhealth.tasks.SurvivalTimeToEventGBSG` reproduces those times.
+    The divisor uses every record, including held-out ones, exactly as the
+    authors did; use it only for the paper-reproduction protocol.
+
+    Args:
+        root: Directory containing gbsg.csv from :func:`prepare_gbsg_csv`.
+
+    Returns:
+        ``{"time_divisor": max_time_in_months, "time_offset": 0.002}``.
+
+    Examples:
+        >>> from pyhealth.datasets import gbsg_paper_time_transform
+        >>> transform = gbsg_paper_time_transform("/data/gbsg_csv")  # doctest: +SKIP
+        >>> transform["time_offset"]  # doctest: +SKIP
+        0.002
+    """
+    _, _, outcomes = _read_gbsg_csv(root)
+    return {
+        "time_divisor": float(outcomes[:, 0].max()),
+        "time_offset": GBSG_PAPER_TIME_OFFSET,
+    }
+
+
+def gbsg_released_split_ids(
+    root: str | Path,
+    released_dir: str | Path,
+    repeat: int,
+    tolerance: float = 1e-6,
+) -> dict[str, list[str]]:
+    """Map one of the authors' released GBSG splits to source IDs.
+
+    The Survival MDN authors released ten train/validation/test splits as
+    ``{train,valid,test}_{repeat}.npz`` files (``arr_0``: features,
+    ``arr_1``: ``[time, event]`` in their time units). Those files carry no
+    record identifiers, so each released row is matched to a source row by
+    its seven features, its event and its converted time. Every source row
+    must be used exactly once across the three files.
+
+    Two pairs of GBSG source records are identical in every recorded value.
+    Each such pair is assigned in source order; because the records are
+    identical, the choice does not change any split's data.
+
+    The released files come from the authors' repository, which has no
+    license; download them yourself. This function only reads local files.
+
+    Args:
+        root: Directory containing gbsg.csv from :func:`prepare_gbsg_csv`.
+        released_dir: Directory containing the released ``.npz`` files.
+        repeat: Split number, 1 to 10 in the authors' release.
+        tolerance: Largest allowed absolute difference for features and
+            converted times. Default 1e-6.
+
+    Returns:
+        ``{"train": [...], "valid": [...], "test": [...]}`` source IDs, in
+        the row order of each released file.
+
+    Raises:
+        ValueError: If a released row matches no unused source row, or the
+            three files do not cover every source row exactly once.
+
+    Examples:
+        >>> from pyhealth.datasets import gbsg_released_split_ids
+        >>> ids = gbsg_released_split_ids(  # doctest: +SKIP
+        ...     "/data/gbsg_csv", "/data/Survival-MDN/data/gbsg", repeat=1
+        ... )
+        >>> [len(ids[s]) for s in ("train", "valid", "test")]  # doctest: +SKIP
+        [1785, 223, 224]
+    """
+    ids, features, outcomes = _read_gbsg_csv(root)
+    released_times = outcomes[:, 0] / outcomes[:, 0].max() + _RELEASED_FILE_OFFSET
+    used = np.zeros(len(ids), dtype=bool)
+    memberships = {}
+    for split in _SPLITS:
+        path = Path(released_dir).expanduser() / f"{split}_{repeat}.npz"
+        with np.load(path, allow_pickle=False) as data:
+            x, y = np.asarray(data["arr_0"], float), np.asarray(data["arr_1"], float)
+        if x.ndim != 2 or x.shape[1] != 7 or y.shape != (len(x), 2):
+            raise ValueError(f"{path.name}: expected arr_0 [N, 7] and arr_1 [N, 2]")
+        members = []
+        for row in range(len(x)):
+            match = (
+                ~used
+                & (np.abs(features - x[row]).max(axis=1) <= tolerance)
+                & (outcomes[:, 1] == y[row, 1])
+                & (np.abs(released_times - y[row, 0]) <= tolerance)
+            )
+            candidates = np.flatnonzero(match)
+            if candidates.size == 0:
+                raise ValueError(f"{path.name} row {row}: no matching source record")
+            used[candidates[0]] = True
+            members.append(ids[candidates[0]])
+        memberships[split] = members
+    if not used.all():
+        raise ValueError(
+            f"Released repeat {repeat} leaves {int((~used).sum())} source rows unused"
+        )
+    return memberships
+
 
 def prepare_gbsg_csv(source: str | Path, output_dir: str | Path) -> dict:
     """Convert a local DeepSurv GBSG HDF5 release to CSV and provenance JSON.

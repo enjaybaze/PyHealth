@@ -12,7 +12,13 @@ import polars as pl
 import torch
 
 from pyhealth.data import Patient
-from pyhealth.datasets import GBSGDataset, get_dataloader, prepare_gbsg_csv
+from pyhealth.datasets import (
+    GBSGDataset,
+    gbsg_paper_time_transform,
+    gbsg_released_split_ids,
+    get_dataloader,
+    prepare_gbsg_csv,
+)
 from pyhealth.models import SurvivalMDN
 from pyhealth.tasks import SurvivalTimeToEventGBSG
 
@@ -333,6 +339,95 @@ class TestGBSGPreparation(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     prepare_gbsg_csv(source, out)
                 self.assertFalse((out / "gbsg.csv").exists())
+
+
+def write_released(directory, rows, parts, repeat=1, max_time=None):
+    """Write synthetic files in the authors' released layout."""
+    max_time = max(float(r["time"]) for r in rows) if max_time is None else max_time
+    for split, members in zip(("train", "valid", "test"), parts):
+        x = np.asarray([[rows[i][f"x{j}"] for j in range(7)] for i in members], float)
+        y = np.asarray(
+            [[rows[i]["time"] / max_time + 0.001, rows[i]["event"]] for i in members],
+            float,
+        ).reshape(-1, 2)
+        np.savez(directory / f"{split}_{repeat}.npz", x.reshape(-1, 7), y)
+
+
+class TestGBSGReleasedSplits(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.rows = rows_fixture()
+        write_csv(self.root, self.rows)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_paper_time_transform(self):
+        self.assertEqual(
+            gbsg_paper_time_transform(self.root),
+            {"time_divisor": 30.0, "time_offset": 0.002},
+        )
+
+    def test_mapping_keeps_released_order_and_assigns_twins_once(self):
+        # train_0 and train_3 are identical records; train_2 differs only in x.
+        write_released(self.root, self.rows, [[3, 1], [0], [2]])
+        ids = gbsg_released_split_ids(self.root, self.root, repeat=1)
+        self.assertEqual(ids["train"][1], "train_1")
+        self.assertEqual(ids["test"], ["train_2"])
+        self.assertEqual(
+            sorted(ids["train"][:1] + ids["valid"]), ["train_0", "train_3"]
+        )
+
+    def test_unmatched_or_incomplete_released_files_fail(self):
+        write_released(self.root, self.rows, [[0, 1], [2], [2]])
+        with self.assertRaisesRegex(ValueError, "no matching source record"):
+            gbsg_released_split_ids(self.root, self.root, repeat=1)
+        write_released(self.root, self.rows, [[0, 1], [2], []])
+        with self.assertRaisesRegex(ValueError, "1 source rows unused"):
+            gbsg_released_split_ids(self.root, self.root, repeat=1)
+        # Times converted with a different divisor do not match.
+        write_released(self.root, self.rows, [[0, 1], [2], [3]], max_time=31.0)
+        with self.assertRaisesRegex(ValueError, "no matching source record"):
+            gbsg_released_split_ids(self.root, self.root, repeat=1)
+        np.savez(self.root / "train_2.npz", np.zeros((2, 6)), np.zeros((2, 2)))
+        with self.assertRaisesRegex(ValueError, r"expected arr_0 \[N, 7\]"):
+            gbsg_released_split_ids(self.root, self.root, repeat=2)
+
+    def test_task_applies_paper_time_conversion(self):
+        task = SurvivalTimeToEventGBSG(**gbsg_paper_time_transform(self.root))
+        sample = task(patient_from_rows(self.rows[1:2]))[0]
+        self.assertAlmostEqual(sample["survival"][0], 30 / 30 + 0.002)
+        self.assertEqual(sample["features"], [10.0 + j for j in range(7)])
+        for bad in (
+            {"time_divisor": 0},
+            {"time_divisor": float("inf")},
+            {"time_offset": -0.1},
+            {"time_offset": float("nan")},
+        ):
+            with self.assertRaises(ValueError):
+                SurvivalTimeToEventGBSG(**bad)
+
+    def test_example_runs_released_protocol(self):
+        from examples.gbsg_survival_loading import load_gbsg_splits
+
+        write_released(self.root, self.rows, [[0, 1], [2], [3]])
+        parts, metadata = load_gbsg_splits(
+            self.root, self.root / "out", released_dir=self.root, repeat=1
+        )
+        self.assertEqual(metadata["protocol"], "authors-released-repeat-1")
+        self.assertEqual([len(p) for p in parts], [2, 1, 1])
+        self.assertEqual(metadata["model"]["time_scale"], 1.0)
+        released = np.load(self.root / "train_1.npz")["arr_1"][:, 0] + 0.001
+        loaded = [s["survival"][0].item() for s in parts[0]]
+        np.testing.assert_allclose(sorted(loaded), sorted(released), rtol=1e-6)
+        with self.assertRaises(ValueError):
+            load_gbsg_splits(
+                self.root,
+                self.root / "out2",
+                split_source_ids={"train": [], "valid": [], "test": []},
+                released_dir=self.root,
+            )
 
 
 if __name__ == "__main__":

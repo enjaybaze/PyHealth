@@ -55,6 +55,8 @@ from .covid19_cxr import COVID19CXRDataset
 from .dreamt import DREAMTDataset
 from .ehrshot import EHRShotDataset
 from .gbsg import GBSGDataset as GBSGDataset, prepare_gbsg_csv as prepare_gbsg_csv
+from .gbsg import gbsg_paper_time_transform as gbsg_paper_time_transform
+from .gbsg import gbsg_released_split_ids as gbsg_released_split_ids
 from .eicu import eICUDataset
 from .isruc import ISRUCDataset
 from .medical_transcriptions import MedicalTranscriptionsDataset

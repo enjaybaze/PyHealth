@@ -40,7 +40,7 @@ def _gbsg_values(record: Mapping, source_id: str) -> tuple[list[float], float, f
 class SurvivalTimeToEventGBSG(BaseTask):
     """Extract seven ordered features and a packed GBSG survival label.
 
-    Times remain in source months, with no normalization or added offset.
+    By default, times remain in source months with no normalization or offset.
     The benchmark endpoint is recurrence-free survival. The task emits
     ``features: [7]`` and ``survival: [time, event]``, with 1 for an observed
     event and 0 for censoring. Tensor labels select ``mode=None`` in
@@ -52,12 +52,22 @@ class SurvivalTimeToEventGBSG(BaseTask):
             Supply both arguments or neither. Constant features should use
             a scale of 1, as in sklearn's StandardScaler. Without these
             arguments, features are returned in their source representation.
+        time_divisor: Positive divisor applied to every time. Default 1.0
+            (source months).
+        time_offset: Non-negative value added after dividing. Default 0.0.
+            The emitted time is ``time / time_divisor + time_offset``. The
+            Survival MDN authors' protocol uses the largest time in the full
+            2,232-record cohort as the divisor and an offset of 0.002; see
+            :func:`~pyhealth.datasets.gbsg_paper_time_transform`.
 
     Examples:
         >>> from pyhealth.tasks import SurvivalTimeToEventGBSG
         >>> task = SurvivalTimeToEventGBSG()
         >>> task.output_schema
         {'survival': 'tensor'}
+        >>> paper = SurvivalTimeToEventGBSG(time_divisor=87.36, time_offset=0.002)
+        >>> paper.time_offset
+        0.002
     """
 
     task_name = "SurvivalTimeToEventGBSG"
@@ -68,8 +78,16 @@ class SurvivalTimeToEventGBSG(BaseTask):
         self,
         feature_mean: Sequence[float] | None = None,
         feature_scale: Sequence[float] | None = None,
+        time_divisor: float = 1.0,
+        time_offset: float = 0.0,
     ) -> None:
         super().__init__()
+        time_divisor, time_offset = float(time_divisor), float(time_offset)
+        if not math.isfinite(time_divisor) or time_divisor <= 0:
+            raise ValueError("time_divisor must be finite and positive")
+        if not math.isfinite(time_offset) or time_offset < 0:
+            raise ValueError("time_offset must be finite and non-negative")
+        self.time_divisor, self.time_offset = time_divisor, time_offset
         if (feature_mean is None) != (feature_scale is None):
             raise ValueError("Supply both feature_mean and feature_scale, or neither")
         self.feature_mean = None if feature_mean is None else list(feature_mean)
@@ -117,6 +135,11 @@ class SurvivalTimeToEventGBSG(BaseTask):
                 ).tolist()
             if not all(math.isfinite(v) and abs(v) <= _FLOAT32_MAX for v in features):
                 raise ValueError("Standardized GBSG features must be finite float32")
+        time = time / self.time_divisor + self.time_offset
+        if not (time > 0 and np.float32(time) > 0):
+            raise ValueError(
+                f"GBSG record {patient.patient_id}: converted time must be positive"
+            )
         return [
             {
                 "patient_id": patient.patient_id,
