@@ -1,0 +1,6 @@
+last_censored=False seed=0 max|diff|=2.5e-16
+last_censored=False seed=1 max|diff|=3.3e-16
+last_censored=False seed=2 max|diff|=1.9e-15
+last_censored=True seed=0 max|diff|=4.4e-16
+last_censored=True seed=1 max|diff|=8.3e-16
+last_censored=True seed=2 max|diff|=1.7e-15
