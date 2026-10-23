@@ -1,12 +1,12 @@
 """Experiment runner for the Survival MDN reproduction (T5, used in T8).
 
-Trains SurvivalMDN on the authors' released GBSG splits, one fit per
-(config, split, seed), and saves for every fit:
+Trains SurvivalMDN on the authors' released GBSG or SUPPORT splits
+(--dataset), one fit per (config, split, seed), and saves for every fit:
 
     <out>/<config>/split_<n>/seed_<s>/
         record.json       config, seed, split, timings, epochs, val NLL,
                           test metrics, environment and git commits
-        predictions.npz   test source IDs, times, events, grid, curves
+        predictions.npz   test patient IDs, times, events, grid, curves
 
 Then writes <out>/summary.csv and <out>/summary.json: per config, mean and
 SD across splits of every metric, plus mean validation NLL. Choose configs
@@ -19,6 +19,9 @@ Example (5 epochs, 2 splits, to check timing):
     python run_survival_mdn.py --root /data/gbsg_csv \\
         --released-dir /data/Survival-MDN/data/gbsg \\
         --out runs/pilot --splits 1 2 --epochs 5
+
+SUPPORT: --dataset support2, --root a folder with support2.csv (first
+column named sno) and --released-dir the authors' data/support folder.
 
 Ablations: pass several values, and every combination is run, e.g.
     --num-components 1 2 3 5 10 20 --transform softplus exp
@@ -43,9 +46,12 @@ import pyhealth
 import torch
 from pyhealth.datasets import (
     GBSGDataset,
+    Support2Dataset,
     gbsg_paper_time_transform,
     gbsg_released_split_ids,
     get_dataloader,
+    support2_paper_time_transform,
+    support2_released_split_ids,
 )
 from pyhealth.metrics import survival_curve_metrics_fn
 from pyhealth.metrics.survival_curve import (
@@ -54,7 +60,7 @@ from pyhealth.metrics.survival_curve import (
     integration_grid,
 )
 from pyhealth.models import SurvivalMDN
-from pyhealth.tasks import SurvivalTimeToEventGBSG
+from pyhealth.tasks import SurvivalTimeToEventGBSG, SurvivalTimeToEventSupport2
 from pyhealth.trainer import Trainer
 from pyhealth.trainer import logger as trainer_logger
 
@@ -120,10 +126,54 @@ def config_grid(base: dict, args) -> list[tuple[str, dict, dict]]:
     return configs
 
 
-def load_samples(root: Path, cache_dir: Path):
-    dataset = GBSGDataset(root=str(root), cache_dir=cache_dir, num_workers=1)
-    task = SurvivalTimeToEventGBSG(**gbsg_paper_time_transform(root))
-    return dataset.set_task(task)
+class GBSGBenchmark:
+    """Authors' protocol: raw features, months / cohort max + 0.002."""
+
+    def __init__(self, root: Path, released_dir: Path, cache_dir: Path):
+        self.root, self.released_dir = root, released_dir
+        dataset = GBSGDataset(root=str(root), cache_dir=cache_dir, num_workers=1)
+        task = SurvivalTimeToEventGBSG(**gbsg_paper_time_transform(root))
+        self.samples = dataset.set_task(task)
+        self.preprocessing = {"features": "raw", **gbsg_paper_time_transform(root)}
+
+    def split(self, split: int):
+        ids = gbsg_released_split_ids(self.root, self.released_dir, split)
+        return ids, self.samples, self.preprocessing
+
+
+class Support2Benchmark:
+    """Authors' protocol: 27 features standardized on each split's training
+    patients, days / 365.25 + 0.001."""
+
+    def __init__(self, root: Path, released_dir: Path, cache_dir: Path):
+        self.root, self.released_dir = root, released_dir
+        self.dataset = Support2Dataset(
+            root=str(root), tables=["support2"], cache_dir=cache_dir, num_workers=1
+        )
+        self.time = support2_paper_time_transform()
+        raw = self.dataset.set_task(SurvivalTimeToEventSupport2(**self.time))
+        self.raw_features = {
+            raw[i]["patient_id"]: raw[i]["features"].numpy().astype(float)
+            for i in range(len(raw))
+        }
+
+    def split(self, split: int):
+        ids = support2_released_split_ids(self.root, self.released_dir, split)
+        train = np.stack([self.raw_features[p] for p in ids["train"]])
+        mean, scale = train.mean(axis=0), train.std(axis=0)
+        scale[scale == 0] = 1.0  # as sklearn's StandardScaler
+        task = SurvivalTimeToEventSupport2(mean.tolist(), scale.tolist(), **self.time)
+        samples = self.dataset.set_task(task)
+        preprocessing = {
+            "features": "standardized on this split's training patients",
+            "feature_mean": mean.tolist(),
+            "feature_scale": scale.tolist(),
+            **self.time,
+        }
+        return ids, samples, preprocessing
+
+
+BENCHMARKS = {"gbsg": GBSGBenchmark, "support2": Support2Benchmark}
 
 
 def split_parts(samples, ids: dict, seed: int):
@@ -242,7 +292,7 @@ def run_one(name, model_cfg, train_cfg, split, seed, parts, run_dir, device):
     grid = np.linspace(0.0, train_max, PREDICTION_GRID_POINTS)
     np.savez_compressed(
         run_dir / "predictions.npz",
-        source_id=np.asarray(heldout["source_id"]),
+        patient_id=np.asarray(heldout["patient_id"]),
         time=times,
         event=events,
         grid=grid,
@@ -329,12 +379,18 @@ def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument("--root", type=Path, required=True, help="Folder with gbsg.csv")
+    p.add_argument("--dataset", choices=sorted(BENCHMARKS), default="gbsg")
+    p.add_argument(
+        "--root",
+        type=Path,
+        required=True,
+        help="Folder with gbsg.csv, or support2.csv for --dataset support2",
+    )
     p.add_argument(
         "--released-dir",
         type=Path,
         required=True,
-        help="Authors' data/gbsg folder with the .npz splits",
+        help="Authors' data/gbsg or data/support folder with the .npz splits",
     )
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--name", default="mdn", help="Config name prefix")
@@ -364,11 +420,11 @@ def main():
         else None,
         "python": platform.python_version(),
     }
-    samples = load_samples(args.root, args.out / "cache")
+    benchmark = None  # built on first use, so a finished run resumes instantly
     total = len(configs) * len(args.splits) * len(args.seeds)
     done = 0
     for split in args.splits:
-        ids = gbsg_released_split_ids(args.root, args.released_dir, split)
+        prepared = None
         for (name, model_cfg, train_cfg), seed in itertools.product(
             configs, args.seeds
         ):
@@ -377,11 +433,20 @@ def main():
             if (run_dir / "record.json").exists():
                 print(f"[{done}/{total}] {run_dir} done, skipping")
                 continue
+            if benchmark is None:
+                benchmark = BENCHMARKS[args.dataset](
+                    args.root, args.released_dir, args.out / "cache"
+                )
+            if prepared is None:
+                prepared = benchmark.split(split)
+            ids, samples, preprocessing = prepared
             run_dir.mkdir(parents=True, exist_ok=True)
             parts = split_parts(samples, ids, seed)
             record = run_one(
                 name, model_cfg, train_cfg, split, seed, parts, run_dir, args.device
             )
+            record["dataset"] = args.dataset
+            record["preprocessing"] = preprocessing
             record["environment"] = {**env, "device": args.device}
             (run_dir / "record.json").write_text(json.dumps(record, indent=2) + "\n")
             m = record["test_metrics"]

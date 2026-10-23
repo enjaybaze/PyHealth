@@ -1,14 +1,20 @@
 # Experiment runner (T5, used in T8)
 
 `run_survival_mdn.py` trains SurvivalMDN on the authors' 10 released GBSG
-splits and records everything T8 needs. It lives here, not in the PyHealth
+or SUPPORT splits (`--dataset gbsg|support2`) and records everything T8
+needs. It lives here, not in the PyHealth
 PR. It imports PyHealth from `feat/survival-mdn` (198659d or later).
 
 ## What one fit does
 
-1. Load the split from the released `.npz` files with
-   `gbsg_released_split_ids`. Use the paper protocol: raw features, and
-   `months / 87.36 + 0.002` from `gbsg_paper_time_transform`.
+1. Load the split from the released `.npz` files and apply the paper
+   protocol:
+   - **GBSG:** `gbsg_released_split_ids`; raw features; times are
+     `months / 87.36 + 0.002`.
+   - **SUPPORT:** `support2_released_split_ids`; all 27 features are
+     standardized on that split's training patients; times are
+     `days / 365.25 + 0.001`. The fitted means and scales are saved in
+     each record.
 2. Train with the PyHealth `Trainer` using the authors' defaults:
    - RMSprop, learning rate 1e-3
    - batch size 512, gradient clipping at 100
@@ -112,9 +118,13 @@ about 2 minutes once per output folder. Rough GBSG fit counts:
 | A2: exp vs softplus | 10 new | ~2 min |
 | Tuning, e.g. 30 configs × 10 splits | 300 | ~50 min |
 
-SUPPORT is not wired in yet. It needs a loader on Aritra's T4 side, and it
-has about 5 times as many patients, so expect slower fits. Time a pilot
-once it is available.
+SUPPORT pilot, Oct 22 (default config, splits 1–3, CPU in the sandbox,
+untuned): about 26 s per fit, with early stopping at 21–25 epochs. C^td
+was 0.620 ± 0.007, IBS 0.189 ± 0.002 and IBLL −0.559 ± 0.008. The
+reference-compatible IBS matched the aligned IBS to 4 decimal places.
+Rough SUPPORT time at about 26 s per fit: main runs (10 fits) ~5 min,
+ablations (80 fits) ~35 min, 300-fit tuning ~2.2 h. NJ's VM CPU ran about
+1.6× slower than the sandbox on GBSG, so expect about 40 s per fit there.
 
 ## Commands
 
@@ -127,6 +137,10 @@ cd ~/survmdn-notes/experiments
 # main config on all 10 splits
 python run_survival_mdn.py --root ~/survmdn-data/csv \
     --released-dir ~/survmdn-data/Survival-MDN/data/gbsg --out ~/runs/main
+
+# SUPPORT: support2.csv with its first column named sno
+python run_survival_mdn.py --dataset support2 --root ~/survmdn-data/support2 \
+    --released-dir ~/survmdn-data/Survival-MDN/data/support --out ~/runs/support-main
 
 # mixture-size and transform ablations
 python run_survival_mdn.py --root ~/survmdn-data/csv \
