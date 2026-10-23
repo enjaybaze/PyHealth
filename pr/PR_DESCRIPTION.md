@@ -62,7 +62,9 @@ Georgia Tech CSE 6250.
   tasks reproduce the authors' arrays to float32 precision: SUPPORT
   standardized features within 7.6e-6, times within 4e-7.
 - **CI.** `tools/check_pr_rules.py` passes, and the new tests pass under
-  `python -m unittest discover -t tests -s tests/core`.
+  `python -m unittest discover -t tests -s tests/core`. The full
+  `tests/core` suite on the merged branch: 1,514 passed, 90 skipped,
+  0 failed.
 
 ## Data and licensing
 
