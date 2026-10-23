@@ -126,6 +126,13 @@ Rough SUPPORT time at about 26 s per fit: main runs (10 fits) ~5 min,
 ablations (80 fits) ~35 min, 300-fit tuning ~2.2 h. NJ's VM CPU ran about
 1.6× slower than the sandbox on GBSG, so expect about 40 s per fit there.
 
+On NJ's VM (Oct 22), SUPPORT took about 38 s per fit and matched the
+sandbox to 3 decimal places (split 3 val NLL 0.4807 vs 0.4803). The input
+CSVs are byte-identical (sha256 `3275ece4…` with `sno` added; the original
+is `79621945…`), so the gap comes from the two CPUs' floating-point
+arithmetic, not the data. GBSG matched exactly. Run every reported
+experiment on one machine.
+
 ## Commands
 
 ```bash
