@@ -179,18 +179,14 @@ BENCHMARKS = {"gbsg": GBSGBenchmark, "support2": Support2Benchmark}
 def split_parts(samples, ids: dict, seed: int):
     """Fresh train/valid/test subsets for one fit.
 
-    Subsets are litdata StreamingDatasets, whose shuffle order depends on
-    their own seed (default 42) and an epoch counter that advances every
-    time they are iterated. Reusing subsets across fits would make a fit's
-    batches depend on how many fits ran before it, so each fit gets new
-    subsets, and the training shuffle uses the fit's seed.
+    The training shuffle comes from get_dataloader's seed (PyHealth #1280),
+    so results do not depend on run order. Fresh subsets are kept anyway,
+    so no dataset state can carry over from an earlier fit.
     """
-    parts = tuple(
+    return tuple(
         samples.subset([i for pid in ids[name] for i in samples.patient_to_index[pid]])
         for name in SPLITS
     )
-    parts[0].seed = seed
-    return parts
 
 
 def safe_batch_size(n: int, requested: int) -> int:
@@ -261,7 +257,7 @@ def run_one(name, model_cfg, train_cfg, split, seed, parts, run_dir, device):
     val_loader = get_dataloader(valid, batch_size=len(valid))
     start = time.perf_counter()
     trainer.train(
-        get_dataloader(train, batch_size=batch, shuffle=True),
+        get_dataloader(train, batch_size=batch, shuffle=True, seed=seed),
         val_loader,
         epochs=train_cfg["epochs"],
         optimizer_class=getattr(torch.optim, train_cfg["optimizer"]),

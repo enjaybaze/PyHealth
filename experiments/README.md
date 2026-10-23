@@ -47,20 +47,18 @@ Completed fits are skipped, so a stopped run resumes with the same command.
 ## Reproducibility
 
 The same fit gives identical results whether it runs alone or after other
-fits. Two fixes make that true:
+fits. The runner passes each fit's seed to `get_dataloader` for the
+training shuffle and builds fresh subsets per fit. It also closes PyHealth's
+per-`Trainer` log handlers after each fit, since PyHealth never removes
+them and later fits would otherwise write into earlier fits' logs.
 
-- **Fresh subsets per fit.** PyHealth's subsets are litdata streaming
-  datasets. Their shuffle order depends on an epoch counter that advances
-  every time the subset is iterated, and on a seed that defaults to 42.
-  Reusing subsets made a fit depend on the fits before it, and every seed
-  shuffled the same way. Each fit now builds new subsets, and the training
-  shuffle uses the fit's seed.
-- **Separate trainer logs.** PyHealth adds a log file handler per
-  `Trainer` and never removes it, so later fits wrote into earlier fits'
-  logs. The runner closes those handlers after each fit.
+Before the branch merged upstream PyHealth 2.1.0 (#1280, "seeded per-loader
+shuffles"), we found the same shuffle problems independently: litdata
+subsets carried an epoch counter between fits and ignored our seed. The
+runner worked around them then. Since the merge it uses the upstream API.
 
-Checked: split 1, K=10 gives validation NLL 0.3557 both alone and after a
-K=1 fit, and seed 2 gives a different fit (0.3879).
+Checked after the merge: split 1, K=10 gives validation NLL 0.3557 both
+alone and after a K=1 fit, the same as the Oct 22 pilot.
 
 ## Reference-compatible widest-horizon IBS/IBLL (t5-10)
 
