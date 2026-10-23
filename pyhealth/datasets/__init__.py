@@ -74,6 +74,7 @@ from .bmd_hs import BMDHSDataset
 from .support2 import Support2Dataset
 from .support2 import support2_paper_time_transform as support2_paper_time_transform
 from .support2 import support2_released_split_ids as support2_released_split_ids
+from .synthea_csv import SyntheaCSVDataset as SyntheaCSVDataset
 from .tcga_prad import TCGAPRADDataset
 from .splitter import (
     PatientSplit as PatientSplit,
