@@ -1,5 +1,8 @@
 from .base_task import BaseTask
 from .survival_time_to_event import SurvivalTimeToEventGBSG as SurvivalTimeToEventGBSG
+from .survival_time_to_event import (
+    SurvivalTimeToEventSupport2 as SurvivalTimeToEventSupport2,
+)
 from .benchmark_ehrshot import BenchmarkEHRShot
 from .cancer_survival import CancerMutationBurden, CancerSurvivalPrediction
 from .bmd_hs_disease_classification import BMDHSDiseaseClassification

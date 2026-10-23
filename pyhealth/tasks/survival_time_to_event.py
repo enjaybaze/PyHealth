@@ -1,4 +1,4 @@
-"""Packed time-to-event labels for the Rotterdam/GBSG benchmark."""
+"""Packed time-to-event labels for the GBSG and SUPPORT2 survival benchmarks."""
 
 import math
 from collections.abc import Mapping, Sequence
@@ -144,6 +144,195 @@ class SurvivalTimeToEventGBSG(BaseTask):
             {
                 "patient_id": patient.patient_id,
                 "source_id": patient.patient_id,
+                "features": features,
+                "survival": [time, event],
+            }
+        ]
+
+
+# SUPPORT2: the DeepSurv benchmark representation used by Survival MDN.
+SUPPORT2_NUMERIC = ("age", "meanbp", "hrt", "resp", "temp", "sod", "wblc", "crea")
+# Categorical levels in the benchmark's code order. The first level of each
+# is the reference category and gets no column (drop-first one-hot coding).
+# Missing race is its own level, as in the benchmark.
+SUPPORT2_CATEGORIES = (
+    ("sex", ("male", "female")),
+    ("num.co", tuple(str(i) for i in range(10))),
+    ("race", ("other", "white", "black", "hispanic", "asian", "missing")),
+    ("diabetes", ("0", "1")),
+    ("dementia", ("0", "1")),
+    ("ca", ("metastatic", "no", "yes")),
+)
+SUPPORT2_FEATURES = SUPPORT2_NUMERIC + tuple(
+    f"{name}={level}" for name, levels in SUPPORT2_CATEGORIES for level in levels[1:]
+)
+
+
+def _blank(value) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _support2_values(
+    record: Mapping, source_id: str
+) -> tuple[list[float], float, float] | None:
+    """Encode one SUPPORT2 row, or return None outside the complete-case cohort.
+
+    The benchmark keeps the 8,873 of 9,105 patients with all eight numeric
+    covariates observed; other rows return None. Unknown categories, and a
+    missing value in a categorical other than race, raise instead.
+    """
+    if any(_blank(record.get(name)) for name in SUPPORT2_NUMERIC):
+        return None
+    features = []
+    for name in SUPPORT2_NUMERIC:
+        try:
+            value = float(record[name])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"SUPPORT2 record {source_id}: non-numeric {name}"
+            ) from exc
+        if not math.isfinite(value) or abs(value) > _FLOAT32_MAX:
+            raise ValueError(
+                f"SUPPORT2 record {source_id}: {name} must be finite float32"
+            )
+        features.append(value)
+    for name, levels in SUPPORT2_CATEGORIES:
+        raw = record.get(name)
+        if _blank(raw):
+            if name != "race":
+                raise ValueError(f"SUPPORT2 record {source_id}: missing {name}")
+            level = "missing"
+        else:
+            level = str(raw).strip()
+            if name in ("num.co", "diabetes", "dementia"):
+                try:
+                    level = str(int(float(level)))
+                except ValueError:
+                    pass
+        if level not in levels:
+            raise ValueError(f"SUPPORT2 record {source_id}: unknown {name} {raw!r}")
+        features.extend(1.0 if level == other else 0.0 for other in levels[1:])
+    try:
+        time, event = float(record["d.time"]), float(record["death"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"SUPPORT2 record {source_id}: missing d.time/death") from exc
+    if not math.isfinite(time) or time <= 0:
+        raise ValueError(f"SUPPORT2 record {source_id}: d.time must be positive")
+    if event not in (0, 1):
+        raise ValueError(f"SUPPORT2 record {source_id}: death must be 0 or 1")
+    return features, time, event
+
+
+class SurvivalTimeToEventSupport2(BaseTask):
+    """Time to death for SUPPORT2, in the DeepSurv benchmark representation.
+
+    Use with :class:`~pyhealth.datasets.Support2Dataset`. Like the DeepSurv
+    benchmark and the Survival MDN paper, this keeps the 8,873 patients
+    with all eight numeric covariates observed (age, mean blood pressure,
+    heart rate, respiratory rate, temperature, sodium, white blood cell
+    count, creatinine); other patients produce no sample. Six categorical
+    covariates (sex, number of comorbidities, race, diabetes, dementia,
+    cancer status) are one-hot coded with the first level dropped, giving
+    ``features: [27]`` in the order of ``SUPPORT2_FEATURES``. Missing race
+    is its own category. The label is ``survival: [time, event]`` with
+    ``event`` 1 for death and 0 for censoring.
+
+    Args:
+        feature_mean: Optional 27 means fitted on training patients only.
+        feature_scale: Matching 27 positive standard deviations. Supply both
+            arguments or neither. Use a scale of 1 for a constant feature,
+            as sklearn's StandardScaler does.
+        time_divisor: Positive divisor for ``d.time`` (days). Default 1.0.
+        time_offset: Non-negative value added after dividing. Default 0.0.
+            The Survival MDN authors use 365.25 and 0.001 (years plus their
+            loader's offset); see
+            :func:`~pyhealth.datasets.support2_paper_time_transform`.
+
+    Examples:
+        >>> from pyhealth.tasks import SurvivalTimeToEventSupport2
+        >>> task = SurvivalTimeToEventSupport2(time_divisor=365.25, time_offset=0.001)
+        >>> task.output_schema
+        {'survival': 'tensor'}
+        >>> from pyhealth.tasks.survival_time_to_event import SUPPORT2_FEATURES
+        >>> len(SUPPORT2_FEATURES), SUPPORT2_FEATURES[8]
+        (27, 'sex=female')
+    """
+
+    task_name = "SurvivalTimeToEventSupport2"
+    input_schema: ClassVar[dict[str, str]] = {"features": "tensor"}
+    output_schema: ClassVar[dict[str, str]] = {"survival": "tensor"}
+
+    def __init__(
+        self,
+        feature_mean: Sequence[float] | None = None,
+        feature_scale: Sequence[float] | None = None,
+        time_divisor: float = 1.0,
+        time_offset: float = 0.0,
+    ) -> None:
+        super().__init__()
+        time_divisor, time_offset = float(time_divisor), float(time_offset)
+        if not math.isfinite(time_divisor) or time_divisor <= 0:
+            raise ValueError("time_divisor must be finite and positive")
+        if not math.isfinite(time_offset) or time_offset < 0:
+            raise ValueError("time_offset must be finite and non-negative")
+        self.time_divisor, self.time_offset = time_divisor, time_offset
+        if (feature_mean is None) != (feature_scale is None):
+            raise ValueError("Supply both feature_mean and feature_scale, or neither")
+        self.feature_mean = self.feature_scale = None
+        if feature_mean is not None:
+            mean = np.asarray(feature_mean, dtype=float)
+            scale = np.asarray(feature_scale, dtype=float)
+            n = len(SUPPORT2_FEATURES)
+            if (
+                mean.shape != (n,)
+                or scale.shape != (n,)
+                or not np.isfinite(mean).all()
+                or not np.isfinite(scale).all()
+                or (scale <= 0).any()
+            ):
+                raise ValueError(f"Expected {n} finite means and {n} positive scales")
+            self.feature_mean, self.feature_scale = mean.tolist(), scale.tolist()
+
+    def __call__(self, patient: Patient) -> list[dict]:
+        """Return one sample, or none for a patient outside the cohort.
+
+        Args:
+            patient: Patient with exactly one ``support2`` event; the patient
+                ID is SUPPORT2's patient number (``sno``).
+
+        Returns:
+            ``[]`` if a numeric covariate is missing, else one sample with
+            ``patient_id``, ``features`` and ``survival``.
+
+        Raises:
+            ValueError: For invalid values or not exactly one record.
+        """
+        events = patient.get_events("support2")
+        if len(events) != 1:
+            raise ValueError(
+                f"SUPPORT2 record {patient.patient_id}: expected exactly one "
+                f"support2 event, got {len(events)}"
+            )
+        parsed = _support2_values(events[0].attr_dict, patient.patient_id)
+        if parsed is None:
+            return []
+        features, time, event = parsed
+        if self.feature_mean is not None:
+            features = (
+                (np.asarray(features) - self.feature_mean) / self.feature_scale
+            ).tolist()
+            if not all(math.isfinite(v) and abs(v) <= _FLOAT32_MAX for v in features):
+                raise ValueError(
+                    "Standardized SUPPORT2 features must be finite float32"
+                )
+        time = time / self.time_divisor + self.time_offset
+        if not (time > 0 and np.float32(time) > 0):
+            raise ValueError(
+                f"SUPPORT2 record {patient.patient_id}: converted time must be positive"
+            )
+        return [
+            {
+                "patient_id": patient.patient_id,
                 "features": features,
                 "survival": [time, event],
             }

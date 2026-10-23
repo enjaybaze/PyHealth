@@ -210,6 +210,7 @@ Available Tasks
 
     Base Task <tasks/pyhealth.tasks.BaseTask>
     GBSG Time-to-Event <tasks/pyhealth.tasks.SurvivalTimeToEventGBSG>
+    SUPPORT2 Time-to-Event <tasks/pyhealth.tasks.SurvivalTimeToEventSupport2>
     In-Hospital Mortality (MIMIC-IV) <tasks/pyhealth.tasks.InHospitalMortalityMIMIC4>
     In-Hospital Mortality (MEDS) <tasks/pyhealth.tasks.InHospitalMortalityMEDS>
     MIMIC-III ICD-9 Coding <tasks/pyhealth.tasks.MIMIC3ICD9Coding>
