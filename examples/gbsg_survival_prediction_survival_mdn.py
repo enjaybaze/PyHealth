@@ -18,14 +18,13 @@ yourself; see the GBSGDataset docs for preparing gbsg.csv):
         --root /data/gbsg_csv --released-dir /data/Survival-MDN/data/gbsg \\
         --repeat 1 --num-components 1 5 10
 
-Every fit uses fresh dataset subsets and its own seed, so the result of a
-config does not depend on which configs ran before it.
+Each fit seeds its model and its training shuffle (get_dataloader's seed),
+so a config gives the same result whichever configs ran before it.
 """
 
 import argparse
 import itertools
 import logging
-import random
 import tempfile
 from pathlib import Path
 
@@ -80,7 +79,7 @@ class SyntheticSplits:
         cut = [int(0.8 * len(samples)), int(0.9 * len(samples))]
         self.parts = [[samples[i] for i in idx] for idx in np.split(order, cut)]
 
-    def build(self, seed: int):
+    def build(self):
         return tuple(
             create_sample_dataset(
                 samples=part,
@@ -101,10 +100,8 @@ class GBSGReleasedSplit:
         self.samples = dataset.set_task(task)
         self.ids = gbsg_released_split_ids(root, released_dir, repeat)
 
-    def build(self, seed: int):
-        # Fresh subsets: their shuffle state would otherwise carry over
-        # between fits. The training shuffle follows the fit's seed.
-        parts = tuple(
+    def build(self):
+        return tuple(
             self.samples.subset(
                 [
                     i
@@ -114,18 +111,12 @@ class GBSGReleasedSplit:
             )
             for name in ("train", "valid", "test")
         )
-        parts[0].seed = seed
-        return parts
 
 
 def fit_and_score(splits, model_kwargs: dict, epochs: int, seed: int, out: Path):
     """Train one config, keep the best validation epoch, score the test set."""
-    # In-memory datasets shuffle with Python's random module, streaming ones
-    # with their own seed (set in build); seed everything a fit draws from.
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    train, valid, test = splits.build(seed)
+    torch.manual_seed(seed)  # model initialization
+    train, valid, test = splits.build()
     model = SurvivalMDN(train, **model_kwargs)
     trainer = Trainer(model, device="cpu", output_path=str(out), exp_name="fit")
     batch_size = min(256, len(train))
@@ -133,7 +124,7 @@ def fit_and_score(splits, model_kwargs: dict, epochs: int, seed: int, out: Path)
         batch_size -= 1
     valid_loader = get_dataloader(valid, batch_size=len(valid))
     trainer.train(
-        get_dataloader(train, batch_size=batch_size, shuffle=True),
+        get_dataloader(train, batch_size=batch_size, shuffle=True, seed=seed),
         valid_loader,
         epochs=epochs,
         optimizer_class=torch.optim.RMSprop,
