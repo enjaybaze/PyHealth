@@ -238,8 +238,10 @@ class SurvivalMDN(BaseModel):
             least ``softplus(0.01)`` (about 0.70).
 
         Examples:
-            >>> log_w, mu, sigma = model.mixture_params(batch["features"])
-            >>> log_w.shape == mu.shape == sigma.shape
+            Continuing the class example above:
+
+            >>> log_w, mu, sigma = model.mixture_params(batch["features"])  # doctest: +SKIP
+            >>> log_w.shape == mu.shape == sigma.shape  # doctest: +SKIP
             True
         """
         h = self.encoder(features.to(self.device).float())
@@ -261,8 +263,10 @@ class SurvivalMDN(BaseModel):
             Tensor with the same shape as ``times``.
 
         Examples:
-            >>> params = model.mixture_params(batch["features"])
-            >>> model.log_density(params, batch["survival"][:, 0]).shape
+            Continuing the class example above:
+
+            >>> params = model.mixture_params(batch["features"])  # doctest: +SKIP
+            >>> model.log_density(params, batch["survival"][:, 0]).shape  # doctest: +SKIP
             torch.Size([2])
         """
         times = times.to(self.device).float()
@@ -284,8 +288,10 @@ class SurvivalMDN(BaseModel):
             Tensor with the same shape as ``times``.
 
         Examples:
-            >>> params = model.mixture_params(batch["features"])
-            >>> model.log_survival(params, batch["survival"][:, 0]).shape
+            Continuing the class example above:
+
+            >>> params = model.mixture_params(batch["features"])  # doctest: +SKIP
+            >>> model.log_survival(params, batch["survival"][:, 0]).shape  # doctest: +SKIP
             torch.Size([2])
         """
         times = times.to(self.device).float()
@@ -315,8 +321,10 @@ class SurvivalMDN(BaseModel):
                 event indicator is not 0 or 1.
 
         Examples:
-            >>> params = model.mixture_params(batch["features"])
-            >>> model.censored_nll(params, batch["survival"]).dim()
+            Continuing the class example above:
+
+            >>> params = model.mixture_params(batch["features"])  # doctest: +SKIP
+            >>> model.censored_nll(params, batch["survival"]).dim()  # doctest: +SKIP
             0
         """
         survival = survival.to(self.device).float()
@@ -346,8 +354,10 @@ class SurvivalMDN(BaseModel):
               parameters, each ``[B, K]``.
 
         Examples:
-            >>> out = model(**batch)
-            >>> sorted(out)
+            Continuing the class example above:
+
+            >>> out = model(**batch)  # doctest: +SKIP
+            >>> sorted(out)  # doctest: +SKIP
             ['log_weights', 'loss', 'means', 'scales', 'y_true']
         """
         params = self.mixture_params(kwargs[self.feature_key])
@@ -383,8 +393,10 @@ class SurvivalMDN(BaseModel):
             non-increasing along each row.
 
         Examples:
-            >>> t_grid = torch.linspace(0.0, 40.0, steps=5)
-            >>> model.predict_survival(batch["features"], t_grid).shape
+            Continuing the class example above:
+
+            >>> t_grid = torch.linspace(0.0, 40.0, steps=5)  # doctest: +SKIP
+            >>> model.predict_survival(batch["features"], t_grid).shape  # doctest: +SKIP
             torch.Size([2, 5])
         """
         t_grid = torch.as_tensor(t_grid, dtype=torch.float32, device=self.device)

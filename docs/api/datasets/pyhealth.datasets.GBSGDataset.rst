@@ -7,7 +7,7 @@ GBSG2 dataset. The endpoint is recurrence-free survival, with event 1 for an
 observed event and 0 for censoring. Source times are in months.
 
 Preparation and provenance
--------------------------
+--------------------------
 
 Obtain the local ``gbsg_cancer_train_test.h5`` release from the
 `DeepSurv benchmark <https://github.com/jaredleekatzman/DeepSurv/tree/master/experiments/data/gbsg>`_.
@@ -37,7 +37,7 @@ IDs. The loader itself does not impute, add time offsets, standardize, or
 assign new splits; those choices belong to the task and the split protocol.
 
 Preprocessing and examples
--------------------------
+--------------------------
 
 The default task emits raw features and a packed ``survival: [time, event]``
 tensor. Fit feature means and scales on training records only and pass them
