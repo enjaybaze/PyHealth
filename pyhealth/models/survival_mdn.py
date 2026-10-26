@@ -143,8 +143,8 @@ class SurvivalMDN(BaseModel):
             raise ValueError("num_components must be at least 1")
         if num_layers < 1:
             raise ValueError("num_layers must be at least 1")
-        if time_scale <= 0:
-            raise ValueError("time_scale must be positive")
+        if not math.isfinite(time_scale) or time_scale <= 0:
+            raise ValueError("time_scale must be finite and positive")
         if len(self.feature_keys) != 1 or len(self.label_keys) != 1:
             raise ValueError(
                 "SurvivalMDN expects exactly one feature key and one label key"
@@ -330,6 +330,8 @@ class SurvivalMDN(BaseModel):
         survival = survival.to(self.device).float()
         if survival.dim() != 2 or survival.shape[1] != 2:
             raise ValueError("survival labels must have shape [B, 2]")
+        if survival.shape[0] != params[0].shape[0]:
+            raise ValueError("one survival label row is required per patient")
         times, events = survival[:, 0], survival[:, 1]
         if not ((events == 0) | (events == 1)).all():
             raise ValueError("event indicators must be 0 or 1")

@@ -23,6 +23,7 @@ from .ranking import ranking_metrics_fn
 from .regression import regression_metrics_fn
 from .survival_curve import (
     concordance_td,
+    d_calibration,
     integrated_binomial_loglik_td,
     integrated_brier_score_td,
     survival_curve_metrics_fn,
@@ -41,6 +42,7 @@ __all__ = [
     "compute_mle",
     "compute_prevalence_metrics",
     "concordance_td",
+    "d_calibration",
     "ddi_rate_score",
     "evaluate_attribution",
     "evaluate_synthetic_ehr",

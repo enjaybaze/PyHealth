@@ -52,10 +52,16 @@ class TestConcordanceTD(unittest.TestCase):
         # G = 1 at t=1 and 0.75 at t=3, 4, so those events weigh 16/9.
         # Pairs: i=1 vs {2,3,4,5}: 4/4 concordant; i=3 vs {4,5}: 1/2;
         # i=4 vs {5}: a tie, counted discordant. C = (4 + 16/9) / (4 + 48/9).
-        surv = np.full((5, 5), 0.9)
-        surv[0, 0] = 0.1
-        surv[2, 2], surv[3, 2], surv[4, 2] = 0.5, 0.6, 0.4
-        surv[3, 3], surv[4, 3] = 0.5, 0.5
+        # Complete valid curves, preserving the hand-computed pair rankings.
+        surv = np.array(
+            [
+                [0.1, 0.1, 0.1, 0.1, 0.1],
+                [0.9, 0.9, 0.9, 0.9, 0.9],
+                [0.9, 0.9, 0.5, 0.5, 0.5],
+                [0.9, 0.9, 0.6, 0.3, 0.3],
+                [0.9, 0.9, 0.4, 0.3, 0.3],
+            ]
+        )
         c = concordance_td(self.times, self.events, surv, self.times)
         self.assertAlmostEqual(c, 13 / 21)
 
@@ -64,9 +70,15 @@ class TestConcordanceTD(unittest.TestCase):
         perfect = np.exp(-np.outer(risk, self.times))
         reversed_ = np.exp(-np.outer(risk[::-1], self.times))
         constant = np.full((5, 5), 0.5)
-        self.assertEqual(concordance_td(self.times, self.events, perfect, self.times), 1.0)
-        self.assertEqual(concordance_td(self.times, self.events, reversed_, self.times), 0.0)
-        self.assertEqual(concordance_td(self.times, self.events, constant, self.times), 0.0)
+        self.assertEqual(
+            concordance_td(self.times, self.events, perfect, self.times), 1.0
+        )
+        self.assertEqual(
+            concordance_td(self.times, self.events, reversed_, self.times), 0.0
+        )
+        self.assertEqual(
+            concordance_td(self.times, self.events, constant, self.times), 0.0
+        )
 
     def test_tied_times_count_censored_partner(self):
         # Patient 1 is censored at the same time as patient 0's event.
@@ -78,8 +90,8 @@ class TestConcordanceTD(unittest.TestCase):
     def test_threshold_truncates_late_events(self):
         # With threshold 0.8 only the event at t=1 (G=1) is used.
         surv = np.full((5, 5), 0.9)
-        surv[0, 0] = 0.1
-        surv[2, 2] = 0.95  # would be discordant if included
+        surv[0, :] = 0.1
+        surv[2, :] = 0.95  # would be discordant if included
         c = concordance_td(self.times, self.events, surv, self.times, 0.8)
         self.assertEqual(c, 1.0)
 
@@ -103,7 +115,9 @@ class TestIntegratedScores(unittest.TestCase):
         events = np.ones(4)
         grid = np.linspace(1.0, 4.0, 7)
         half = np.full((4, 7), 0.5)
-        self.assertAlmostEqual(integrated_brier_score_td(times, events, half, grid), 0.25)
+        self.assertAlmostEqual(
+            integrated_brier_score_td(times, events, half, grid), 0.25
+        )
         self.assertAlmostEqual(
             integrated_binomial_loglik_td(times, events, half, grid), np.log(0.5)
         )
