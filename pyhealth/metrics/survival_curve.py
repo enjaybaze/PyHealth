@@ -43,7 +43,7 @@ def _as_numpy(x) -> np.ndarray:
 
 
 def _check_labels(times: np.ndarray, events: np.ndarray) -> None:
-    if times.ndim != 1 or events.shape != times.shape:
+    if times.ndim != 1 or times.size == 0 or events.shape != times.shape:
         raise ValueError("times and events must be 1-D arrays of equal length")
     if not np.all(np.isfinite(times)) or np.any(times <= 0):
         raise ValueError("times must be finite and strictly positive")
@@ -54,17 +54,27 @@ def _check_labels(times: np.ndarray, events: np.ndarray) -> None:
 
 
 def _check_curves(surv: np.ndarray, n: int, t_grid: np.ndarray) -> None:
-    if t_grid.ndim != 1 or np.any(np.diff(t_grid) <= 0):
-        raise ValueError("t_grid must be 1-D and strictly increasing")
+    if (
+        t_grid.ndim != 1
+        or t_grid.size == 0
+        or not np.isfinite(t_grid).all()
+        or np.any(t_grid < 0)
+        or np.any(np.diff(t_grid) <= 0)
+    ):
+        raise ValueError(
+            "t_grid must be finite, non-negative, 1-D and strictly increasing"
+        )
     if surv.shape != (n, t_grid.size):
         raise ValueError(
             f"surv must have shape [N, T] = [{n}, {t_grid.size}], got {surv.shape}"
         )
+    if not np.isfinite(surv).all() or np.any((surv < 0) | (surv > 1)):
+        raise ValueError("survival probabilities must be finite and in [0, 1]")
+    if np.any(np.diff(surv, axis=1) > 1e-6):
+        raise ValueError("survival curves must be non-increasing within tolerance 1e-6")
 
 
-def censoring_survival(
-    times, events, eval_times
-) -> np.ndarray:
+def censoring_survival(times, events, eval_times) -> np.ndarray:
     """Kaplan-Meier estimate of ``G(t) = P(C > t)`` at ``eval_times``.
 
     Censoring is treated as the event (``1 - events``). The step function
@@ -90,7 +100,9 @@ def censoring_survival(
     n_censored = np.array([censored[times == k].sum() for k in knots])
     g = np.cumprod(1.0 - n_censored / at_risk)
     return np.interp(
-        _as_numpy(eval_times), np.concatenate([[0.0], knots]), np.concatenate([[1.0], g])
+        _as_numpy(eval_times),
+        np.concatenate([[0.0], knots]),
+        np.concatenate([[1.0], g]),
     )
 
 
@@ -354,3 +366,86 @@ def survival_curve_metrics_fn(
     for name in ("c_td", "ibs", "ibll"):
         results[name] = results[f"{name}@{widest}"]
     return results
+
+
+def d_calibration(survival_probabilities, events, num_bins: int = 10) -> dict:
+    """Censoring-aware D-calibration from Haider et al. (2020), Algorithm 2.
+
+    Supply one predicted survival probability at each patient's own observed
+    event or censoring time, in the same order as ``events``. An observed
+    event contributes one count to its probability bin. A censored patient
+    contributes fractional counts over probabilities below their prediction.
+    Every patient contributes total mass one, including all-censored cohorts.
+
+    This follows Algorithm 2's probability floor of 1e-5 and ceiling-based
+    bin assignment. Bins are upper-inclusive: (0, 1/B], ..., ((B-1)/B, 1].
+    Zero predictions are floored before assignment. Counts are returned in
+    ascending probability order. The chi-square p-value is a diagnostic;
+    a large p-value does not establish individual or clinical calibration.
+
+    Args:
+        survival_probabilities: Finite probabilities in [0, 1], shape [N].
+        events: Event indicators, shape [N]; 1 observed, 0 right censored.
+        num_bins: Number of equal-width probability bins, at least 2.
+
+    Returns:
+        Dictionary with ``statistic``, ``p_value``, ``bin_counts``,
+        ``bin_edges``, ``n_patients``, ``n_events``, ``n_censored`` and the
+        ``probability_floor`` and ``boundary_convention`` used. Arrays are
+        lists so the result can be saved directly as JSON.
+
+    Raises:
+        ValueError: If inputs are empty, misaligned or outside their ranges.
+
+    Examples:
+        >>> result = d_calibration([0.25], [0], num_bins=4)
+        >>> result["bin_counts"]
+        [1.0, 0.0, 0.0, 0.0]
+        >>> d_calibration([1.0], [0], num_bins=4)["bin_counts"]
+        [0.25, 0.25, 0.25, 0.25]
+
+    Reference:
+        Haider et al., Effective Ways to Build and Evaluate Individual
+        Survival Distributions, JMLR 21(85), Appendix B.5 / Algorithm 2.
+        https://jmlr.org/papers/v21/18-772.html
+    """
+    from scipy.stats import chi2
+
+    p, e = _as_numpy(survival_probabilities), _as_numpy(events)
+    if p.ndim != 1 or not p.size or e.shape != p.shape:
+        raise ValueError("probabilities and events must be nonempty aligned 1-D arrays")
+    if not np.isfinite(p).all() or np.any((p < 0) | (p > 1)):
+        raise ValueError("survival probabilities must be finite and in [0, 1]")
+    if not np.all((e == 0) | (e == 1)):
+        raise ValueError("events must be 0 (censored) or 1 (event)")
+    if (
+        isinstance(num_bins, (bool, np.bool_))
+        or not isinstance(num_bins, (int, np.integer))
+        or num_bins < 2
+    ):
+        raise ValueError("num_bins must be an integer of at least 2")
+    edges = np.linspace(0.0, 1.0, num_bins + 1)
+    probabilities = np.maximum(p, 1e-5)
+    counts = np.zeros(num_bins)
+    bins = np.clip(
+        np.searchsorted(edges, probabilities, side="left") - 1, 0, num_bins - 1
+    )
+    np.add.at(counts, bins[e == 1], 1.0)
+    censored = probabilities[e == 0, None]
+    counts += (
+        np.clip(np.minimum(edges[None, 1:], censored) - edges[None, :-1], 0.0, None)
+        / censored
+    ).sum(axis=0)
+    expected = len(p) / num_bins
+    statistic = float(np.square(counts - expected).sum() / expected)
+    return {
+        "statistic": statistic,
+        "p_value": float(chi2.sf(statistic, num_bins - 1)),
+        "bin_counts": counts.tolist(),
+        "bin_edges": edges.tolist(),
+        "n_patients": len(p),
+        "n_events": int(e.sum()),
+        "n_censored": int((e == 0).sum()),
+        "probability_floor": 1e-5,
+        "boundary_convention": "upper-inclusive probability bins, Algorithm 2",
+    }

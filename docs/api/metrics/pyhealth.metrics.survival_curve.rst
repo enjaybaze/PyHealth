@@ -37,3 +37,18 @@ These metrics complement risk-score metrics such as Harrell's C-index.
 .. autofunction:: horizon
 
 .. autofunction:: integration_grid
+
+.. autofunction:: d_calibration
+
+D-calibration receives each patient's survival probability at their own
+observed time, preserving patient order. It returns censored fractional bin
+counts, the chi-square statistic and its p-value. It follows Haider et al.,
+Appendix B.5, Algorithm 2, including its 1e-5 floor and upper-inclusive bins.
+Save these conventions with results. A large p-value is not evidence of
+individual or clinical calibration.
+
+Metric inputs must be finite probabilities in [0, 1], nonincreasing within
+1e-6 along finite, nonnegative and strictly increasing time grids.
+
+For a complete train/evaluate/calibration example, see
+:doc:`../../survival_benchmark`.
