@@ -430,6 +430,15 @@ def split_parts(
     The training shuffle comes from get_dataloader's seed (PyHealth #1280),
     so results do not depend on run order. Fresh subsets are kept anyway,
     so no dataset state can carry over from an earlier fit.
+
+    Args:
+        samples: Native patient-indexed survival samples.
+        ids: Source IDs for the train, valid and test groups in release order.
+        seed: Fit seed retained in the shared caller interface. This function
+            preserves source order; the training loader applies the seed.
+
+    Returns:
+        Fresh training, validation and test subsets in that order.
     """
     return tuple(
         samples.subset([i for pid in ids[name] for i in samples.patient_to_index[pid]])
@@ -474,6 +483,15 @@ def reference_compatible_widest(
     values are the ones to compare with Table 1. PyHealth's aligned values
     stay in test_metrics. Checked against the authors' metrics.py to 2e-15
     using independent synthetic probes.
+
+    Args:
+        times: Positive observed event/censoring times, shape [N].
+        events: Matching binary event flags.
+        predict: Callable returning [N,T] survival values for a requested grid.
+
+    Returns:
+        Separately named reference-compatible widest-horizon IBS and IBLL.
+        These deliberately reproduce the grid mismatch, not aligned scoring.
     """
     grid = integration_grid(times, events, 1e-8)
     surv = predict(np.linspace(times.min(), times.max(), len(grid)))
@@ -496,7 +514,14 @@ def close_trainer_logs(handlers: Sequence[logging.Handler]) -> None:
 
 
 def epochs_from_log(log: Path) -> dict[str, Any]:
-    """Best epoch and epochs run, read from this fit's trainer log."""
+    """Read early-stopping metadata from the fit's own Trainer log.
+
+    Args:
+        log: Log path; absent logs return unknown epoch counts.
+
+    Returns:
+        Best epoch, completed epoch count and early-stopping flag.
+    """
     text = log.read_text() if log.exists() else ""
     best = re.findall(r"New best loss score \([^)]*\) at epoch-(\d+)", text)
     trained = re.findall(r"--- Train epoch-(\d+)", text)
@@ -648,6 +673,13 @@ def summarize(out: Path) -> list[dict[str, Any]]:
 
     Seeds are averaged within each split first, so the SD is across the
     released splits, as in the paper's tables.
+
+    Args:
+        out: One dataset's MDN output root, containing completed records.
+
+    Returns:
+        Aggregate metric/validation rows, also saved to summary.json and CSV.
+        Sorting uses validation loss; test scores do not select settings.
     """
     rows = {}
     for path in sorted(out.glob("*/split_*/seed_*/record.json")):
