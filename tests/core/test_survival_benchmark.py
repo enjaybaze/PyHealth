@@ -123,6 +123,83 @@ class TestSurvivalBenchmarkInputs(unittest.TestCase):
         self.assertIn("pyhealth/metrics/survival_curve.py", hashes)
         self.assertIn("pyhealth/datasets/support2.py", hashes)
         self.assertTrue(all(len(value) == 64 for value in hashes.values()))
+        self.assertNotIn("README.md", hashes)
+
+    def test_run_versions_preserve_legacy_files_and_changed_requests(self):
+        request = {
+            "settings": {"epochs": 1},
+            "inputs": "original-data",
+            "implementation": "original-code",
+            "runtime": "cpu",
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            legacy = parent / "record.json"
+            legacy.write_text("unverified legacy record")
+            first, saved = run_survival_mdn.resolve_run(parent, request)
+            self.assertIsNone(saved)
+            self.assertRegex(first.name, r"^run_[0-9a-f]{16}$")
+            for key, value in [
+                ("settings", {"epochs": 2}),
+                ("inputs", "new-data"),
+                ("implementation", "new-code"),
+                ("runtime", "cuda"),
+            ]:
+                with self.subTest(key=key):
+                    other, saved = run_survival_mdn.resolve_run(
+                        parent, {**request, key: value}
+                    )
+                    self.assertNotEqual(other, first)
+                    self.assertIsNone(saved)
+            self.assertEqual(legacy.read_text(), "unverified legacy record")
+            self.assertEqual(json.loads((first / "request.json").read_text()), request)
+
+    def test_incomplete_run_is_preserved_and_not_restarted(self):
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            request = {"epochs": 1, "seed": 0}
+            path, _ = run_survival_mdn.resolve_run(parent, request)
+            marker = path / "partial.ckpt"
+            marker.write_bytes(b"interrupted training")
+            with self.assertRaisesRegex(ValueError, "Incomplete run.*no completed"):
+                run_survival_mdn.resolve_run(parent, request)
+            self.assertEqual(marker.read_bytes(), b"interrupted training")
+            self.assertEqual(len(list(parent.glob("run_*"))), 1)
+
+    def test_completed_run_uses_canonical_identity_order(self):
+        with tempfile.TemporaryDirectory() as folder:
+            parent = Path(folder)
+            request = {"epochs": 1, "model": {"width": 8, "layers": 2}}
+            path, _ = run_survival_mdn.resolve_run(parent, request)
+            (path / "predictions.npz").write_bytes(b"saved predictions")
+            record = {
+                "request": request,
+                "artifacts": run_survival_mdn.artifact_hashes(path),
+            }
+            (path / "record.json").write_text(json.dumps(record))
+            reordered = {"model": {"layers": 2, "width": 8}, "epochs": 1}
+            reused, saved = run_survival_mdn.resolve_run(parent, reordered)
+            self.assertEqual(reused, path)
+            self.assertEqual(saved, record)
+
+    def test_unreadable_completed_record_requires_explicit_recovery(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path, _ = run_survival_mdn.resolve_run(Path(folder), {"epochs": 1})
+            record = path / "record.json"
+            record.write_text('{"interrupted":')
+            with self.assertRaisesRegex(ValueError, "Unreadable completed record"):
+                run_survival_mdn.resolve_run(Path(folder), {"epochs": 1})
+            self.assertEqual(record.read_text(), '{"interrupted":')
+
+    def test_record_identity_mismatch_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path, _ = run_survival_mdn.resolve_run(Path(folder), {"epochs": 1})
+            record = path / "record.json"
+            for content in ["[]", '{"request": {"epochs": 2}}']:
+                record.write_text(content)
+                with self.assertRaisesRegex(ValueError, "identity does not match"):
+                    run_survival_mdn.resolve_run(Path(folder), {"epochs": 1})
+                self.assertEqual(record.read_text(), content)
 
 
 class TestSurvivalBenchmarkMDN(unittest.TestCase):
@@ -147,7 +224,7 @@ class TestSurvivalBenchmarkMDN(unittest.TestCase):
         ]
         with contextlib.redirect_stdout(io.StringIO()):
             run_survival_mdn.main(cls.args)
-        cls.record_path = cls.path / "mdn_K10_softplus/split_1/seed_1/record.json"
+        cls.record_path = next(cls.path.glob("*/split_1/seed_1/run_*/record.json"))
 
     def test_mdn_outputs_and_exact_calibration(self):
         record = json.loads(self.record_path.read_text())
@@ -171,19 +248,50 @@ class TestSurvivalBenchmarkMDN(unittest.TestCase):
             run_survival_mdn.main(self.args)
         self.assertEqual(original, self.record_path.read_bytes())
 
-    def test_changed_cli_and_missing_checkpoint_are_rejected(self):
+    def test_changed_cli_creates_separate_run_and_current_summary(self):
+        original = self.record_path.read_bytes()
         changed = self.args.copy()
         changed[changed.index("--epochs") + 1] = "2"
-        with self.assertRaises(ValueError):
+        with contextlib.redirect_stdout(io.StringIO()):
             run_survival_mdn.main(changed)
+        self.assertEqual(self.record_path.read_bytes(), original)
+        paths = list(self.path.glob("*/split_1/seed_1/run_*/record.json"))
+        self.assertEqual(len(paths), 2)
+        summary = json.loads((self.path / "summary.json").read_text())
+        self.assertEqual(summary[0]["fits"], 1)
+        changed_record = json.loads(
+            next(p for p in paths if p != self.record_path).read_text()
+        )
+        self.assertEqual(changed_record["request"]["train"]["epochs"], 2)
+        self.assertEqual(summary[0]["val_nll_mean"], changed_record["val_nll"])
+
+    def test_missing_checkpoint_is_rejected_without_retraining(self):
         with tempfile.TemporaryDirectory() as folder:
             target = Path(folder) / "copy"
             shutil.copytree(self.path, target)
-            (target / "mdn_K10_softplus/split_1/seed_1/trainer/best.ckpt").unlink()
+            run = target / self.record_path.parent.relative_to(self.path)
+            (run / "trainer/best.ckpt").unlink()
+            original = (run / "record.json").read_bytes()
             copied = self.args.copy()
             copied[-1] = str(target)
             with self.assertRaisesRegex(ValueError, "Missing or changed"):
                 run_survival_mdn.main(copied)
+            self.assertEqual((run / "record.json").read_bytes(), original)
+            self.assertFalse((run / "trainer/best.ckpt").exists())
+
+    def test_incomplete_mdn_cli_preserves_checkpoint(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "copy"
+            shutil.copytree(self.path, target)
+            run = target / self.record_path.parent.relative_to(self.path)
+            (run / "record.json").unlink()
+            checkpoint = (run / "trainer/best.ckpt").read_bytes()
+            copied = self.args.copy()
+            copied[-1] = str(target)
+            with self.assertRaisesRegex(ValueError, "Incomplete run"):
+                run_survival_mdn.main(copied)
+            self.assertEqual((run / "trainer/best.ckpt").read_bytes(), checkpoint)
+            self.assertFalse((run / "record.json").exists())
 
     def test_preexisting_trainer_handler_is_preserved(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -287,15 +395,32 @@ class TestSurvivalBenchmarkAdapters(unittest.TestCase):
         ]
         with contextlib.redirect_stdout(io.StringIO()):
             run_baselines.main(args)
-        path = self.path / "cox/split_1/seed_1/record.json"
+        path = next(self.path.glob("cox/split_1/seed_1/run_*/record.json"))
         original = path.read_bytes()
         with contextlib.redirect_stdout(io.StringIO()):
             run_baselines.main(args)
         self.assertEqual(path.read_bytes(), original)
         config = self.path / "config.json"
         config.write_text('{"cox": {"alpha": 1.0}}')
-        with self.assertRaises(ValueError):
+        with contextlib.redirect_stdout(io.StringIO()):
             run_baselines.main([*args, "--config", str(config)])
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(
+            len(list(self.path.glob("cox/split_1/seed_1/run_*/record.json"))), 2
+        )
+        summary = json.loads((self.path / "pilot_summary.json").read_text())
+        self.assertEqual(len(summary), 1)
+        self.assertEqual(summary[0]["config"]["alpha"], 1.0)
+        self.assertNotEqual(self.path / summary[0]["run_directory"], path.parent)
+        checkpoint = path.parent / "checkpoint/cox.joblib"
+        checkpoint.unlink()
+        with self.assertRaisesRegex(ValueError, "Missing or changed"):
+            run_baselines.main(args)
+        self.assertEqual(path.read_bytes(), original)
+        (path.parent / "record.json").unlink()
+        with self.assertRaisesRegex(ValueError, "Incomplete run"):
+            run_baselines.main(args)
+        self.assertFalse(checkpoint.exists())
 
 
 if __name__ == "__main__":

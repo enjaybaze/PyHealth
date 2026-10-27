@@ -30,8 +30,8 @@ from .run_survival_mdn import (
     input_hashes,
     prepare_output,
     reference_compatible_widest,
+    resolve_run,
     split_parts,
-    validate_resume,
 )
 
 
@@ -249,6 +249,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     environment = {
         "python": platform.python_version(),
         "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "gpu": torch.cuda.get_device_name(a.device)
+        if a.device.startswith("cuda") and "deepsurv" in a.models
+        else None,
         "platform": platform.platform(),
         "device": a.device,
         "feature_commit": git_commit(Path(__import__("pyhealth").__file__).parent),
@@ -293,12 +297,19 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "config": config,
                 "inputs": inputs,
                 "implementation": implementation_hashes(),
+                "runtime": {
+                    "python": environment["python"],
+                    "torch": environment["torch"],
+                    "device": config.get("device", "cpu"),
+                    "cuda": environment["cuda"] if kind == "deepsurv" else None,
+                    "gpu": environment["gpu"] if kind == "deepsurv" else None,
+                    "packages": environment["packages"],
+                },
             }
-            run_dir = a.out / kind / f"split_{split}" / f"seed_{a.seed}"
+            parent = a.out / kind / f"split_{split}" / f"seed_{a.seed}"
+            run_dir, saved = resolve_run(parent, identity)
             existing = run_dir / "record.json"
-            if existing.exists():
-                saved = json.loads(existing.read_text())
-                validate_resume(saved, identity, run_dir)
+            if saved is not None:
                 records.append(saved)
                 print(f"Verified existing record: {existing}")
                 continue
@@ -321,10 +332,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                 preprocessing=preprocessing,
                 environment=environment,
                 preparation_seconds=preparation_seconds,
+                run_directory=str(run_dir.relative_to(a.out)),
             )
             record["artifacts"] = artifact_hashes(run_dir)
             existing.write_text(json.dumps(record, indent=2) + "\n")
             records.append(record)
+            print(f"Saved run: {run_dir}")
             print(
                 f"{a.dataset} {kind} split {split}: "
                 f"C^td={record['test_metrics']['c_td']:.4f}, "

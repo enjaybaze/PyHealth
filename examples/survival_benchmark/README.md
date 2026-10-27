@@ -5,8 +5,9 @@ Paper: [Survival Mixture Density Networks](https://proceedings.mlr.press/v182/ha
 Han, Goldstein and Ranganath, MLHC 2022.
 
 These examples use native PyHealth survival datasets/tasks and a shared evaluator.
-Run commands from a PyHealth source checkout. All executable example code is included here. Generated cohorts, checkpoints and results are user
-outputs and are not distributed with the example.
+Run commands from a PyHealth source checkout. All executable example code is
+included here. Generated cohorts, checkpoints and results are user outputs and
+are not distributed with the example.
 
 ## Installation and a download-free run
 
@@ -21,7 +22,7 @@ python -m examples.survival_benchmark.run_survival_mdn \
 python -m examples.survival_benchmark.run_baselines \
   --dataset synthetic --splits 1 --epochs 3 --out /tmp/baseline-demo
 python -m examples.survival_benchmark.calibrate_saved \
-  /tmp/baseline-demo/cox/split_1/seed_1/predictions.npz \
+  /tmp/baseline-demo/cox/split_1/seed_1/run_*/predictions.npz \
   --out /tmp/cox-calibration.json
 ```
 
@@ -109,16 +110,46 @@ Each fit writes `record.json`, `predictions.npz` and a checkpoint. Baselines als
 write `split_ids.json`. Predictions contain patient IDs, observed times, events,
 a plotting grid, curves and exact `survival_at_observed_time`. Records retain
 settings, preprocessing, code/input fingerprints, validation/test scores, timings
-and output fingerprints. Resume only skips a fit when the request and saved
-outputs match; a changed or missing file raises an error. Old records lacking
-this identity require a fresh output root.
+and output fingerprints.
+
+The runner automatically creates a directory such as
+`cox/split_1/seed_1/run_0123456789abcdef/`. The final component is a 16-character
+fingerprint of the fit settings, data hashes, relevant executable source bytes
+and runtime identity, including the device. Reordering JSON keys, moving input
+files without changing their contents, or editing this README does not change
+the identity. Editing fingerprinted executable source does, even if the edit
+does not change numerical behavior. Commit IDs and timestamps are provenance
+only, so committing identical source does not invalidate a completed fit.
+
+- An identical completed run is reused only after its record and saved files
+  are verified. No fit files are rewritten.
+- Changed settings, data, source or runtime automatically select a new
+  directory under the same output root. Earlier runs are preserved.
+- A directory without a completed record, or with missing, changed or unreadable
+  outputs, raises an error naming the problem. Another process may still own an
+  incomplete run. Inspect it before restarting; no automatic repair or overwrite
+  occurs. For an explicit restart, first move that run directory outside the
+  output root to a separate archive, then rerun the same command.
+- Legacy files stored directly under `seed_1/`, without the fingerprint directory,
+  remain untouched and are not reused or included in new summaries. The runner
+  creates a new verified run automatically.
+
+`summary.json`/`summary.csv` for MDN and `pilot_summary.json` for baselines describe
+only the fits requested by the latest successful command. They are refreshed
+views; the versioned fit records remain the source of historical results. Thus
+older learning rates, runtimes or code versions cannot enter a new comparison
+merely because they share the same output root. `record.json` includes the
+relative `run_directory` for locating each selected baseline run. The CLI also
+prints its directory when it reuses a run.
 
 Cox restoration uses `CoxAdapter.load(checkpoint_dir)` and trusted joblib data.
 DeepSurv uses `DeepSurvAdapter.load(checkpoint_dir, device="cpu")`, tensor state
 weights and NPZ baseline hazards. Only load checkpoints from a trusted source.
 MDN restores the recorded model configuration and `trainer/best.ckpt`; its
 `time_scale` is saved with the weights. Saved exact probabilities can be scored
-without loading a model. Otherwise, regenerate them from a checkpoint and the
+without loading a model. Use the printed run directory when selecting a specific
+version; the shell wildcard in the quick-start command scores all matching
+versions. Otherwise, regenerate them from a checkpoint and the
 same patient features/preprocessing without retraining. Coarse plotting grids
 are not silently substituted for exact calibration predictions.
 

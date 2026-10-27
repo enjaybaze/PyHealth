@@ -23,7 +23,7 @@ Cox/DeepSurv are optional examples, not additional core PyHealth dependencies:
    python -m examples.survival_benchmark.run_baselines \
        --dataset synthetic --splits 1 --epochs 3 --out /tmp/baseline-demo
    python -m examples.survival_benchmark.calibrate_saved \
-       /tmp/baseline-demo/cox/split_1/seed_1/predictions.npz \
+       /tmp/baseline-demo/cox/split_1/seed_1/run_*/predictions.npz \
        --out /tmp/calibration.json
 
 Real inputs and conventions
@@ -44,10 +44,19 @@ Keep test scores for reporting. Pycox's tied-time approximation, baseline step
 curve tails and separately named reference-compatible paper scores are explicit
 implementation conventions, not exact original DeepSurv parity claims.
 
-Saved outputs retain code/input and artifact fingerprints. Changed settings,
-inputs or missing saved outputs cannot silently reuse an old fit. D-calibration
-uses exact probabilities at observed times; it can be recalculated from saved
-predictions or regenerated from a trusted checkpoint without retraining.
+Saved outputs retain code/input and artifact fingerprints. Each fit receives
+an automatic ``run_<fingerprint>`` directory under its model/split/seed path.
+Matching complete runs are verified and reused; changed settings, data, source
+or runtime select a new directory while preserving earlier results. Incomplete
+or altered runs stop with a clear error and require explicit recovery. Summaries
+include only the latest command's requested fits, so older versions are not mixed
+into the comparison. Legacy flat outputs are preserved but not reused.
+
+D-calibration uses exact probabilities at observed times. Recalculate it
+explicitly from saved predictions, or regenerate predictions from a trusted
+checkpoint with matching preprocessing and inputs without retraining. See the
+source README for selecting a version and archiving an incomplete run before
+an explicit restart. The runner does not automatically repair failed runs.
 
 Full instructions and API usage
 ------------------------------

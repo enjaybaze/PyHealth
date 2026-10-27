@@ -117,17 +117,18 @@ def validate_resume(
     Raises:
         ValueError: If identities differ or recorded output files are invalid.
     """
-    if record.get("request") != request:
+    if not isinstance(record, dict) or record.get("request") != request:
         raise ValueError(
-            "Existing record has different settings/data or lacks a run identity; "
-            "use a fresh output folder"
+            "Saved run identity does not match the requested fit; preserve "
+            "the existing files and inspect the record before rerunning"
         )
 
     if run_dir is not None:
         artifacts = record.get("artifacts", {})
-        if not artifacts or "predictions.npz" not in artifacts:
+        if not isinstance(artifacts, dict) or "predictions.npz" not in artifacts:
             raise ValueError(
-                "Existing result has no verified artifacts; use a fresh output folder"
+                f"Incomplete run at {run_dir}: no verified predictions; "
+                "preserve this directory before explicitly restarting the fit"
             )
         for name, expected in artifacts.items():
             path = run_dir / name
@@ -135,7 +136,58 @@ def validate_resume(
                 not path.is_file()
                 or hashlib.sha256(path.read_bytes()).hexdigest() != expected
             ):
-                raise ValueError(f"Missing or changed result artifact: {path}")
+                raise ValueError(
+                    f"Missing or changed result artifact: {path}. Preserve this "
+                    "run and inspect the files before explicitly restarting; "
+                    "automatic repair is disabled"
+                )
+
+
+def resolve_run(
+    parent: Path, request: dict[str, Any]
+) -> tuple[Path, dict[str, Any] | None]:
+    """Create a versioned fit directory or verify an identical completed run.
+
+    Args:
+        parent: Readable model/split/seed directory below the output root.
+        request: JSON settings, input, source and runtime identity of one fit.
+
+    Returns:
+        The fingerprint-named directory and its verified record, or None
+        for a newly created run. Existing files are never overwritten.
+
+    Raises:
+        ValueError: If an existing run is incomplete, unreadable or altered.
+    """
+    encoded = json.dumps(
+        request, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
+    run_id = hashlib.sha256(encoded).hexdigest()[:16]
+    run_dir = parent / f"run_{run_id}"
+    parent.mkdir(parents=True, exist_ok=True)
+    try:
+        run_dir.mkdir()
+    except FileExistsError:
+        record_path = run_dir / "record.json"
+        if not record_path.is_file():
+            raise ValueError(
+                f"Incomplete run at {run_dir}: no completed record. Another "
+                "process may still be running. Preserve this directory before "
+                "explicitly restarting the fit; automatic repair is disabled"
+            ) from None
+        try:
+            record = json.loads(record_path.read_text())
+        except (OSError, ValueError) as error:
+            raise ValueError(
+                f"Unreadable completed record at {record_path}; preserve the "
+                "run and inspect it before explicitly restarting"
+            ) from error
+        validate_resume(record, request, run_dir)
+        return run_dir, record
+    (run_dir / "request.json").write_text(
+        json.dumps(request, indent=2, sort_keys=True) + "\n"
+    )
+    return run_dir, None
 
 
 def artifact_hashes(run_dir: Path) -> dict[str, str]:
@@ -148,6 +200,11 @@ def artifact_hashes(run_dir: Path) -> dict[str, str]:
         Relative file paths mapped to SHA-256 fingerprints.
     """
     paths = [run_dir / "predictions.npz"]
+    paths += [
+        run_dir / name
+        for name in ("request.json", "split_ids.json")
+        if (run_dir / name).is_file()
+    ]
     paths += sorted((run_dir / "checkpoint").glob("*"))
     paths += sorted((run_dir / "trainer").glob("*.ckpt"))
     if not paths[0].is_file():
@@ -668,22 +725,22 @@ def _run_one(
     }
 
 
-def summarize(out: Path) -> list[dict[str, Any]]:
+def summarize(out: Path, records: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """Mean and SD across splits, per config.
 
     Seeds are averaged within each split first, so the SD is across the
     released splits, as in the paper's tables.
 
     Args:
-        out: One dataset's MDN output root, containing completed records.
+        out: Destination for the current command's aggregate output.
+        records: Only the completed or verified fits requested by this command.
 
     Returns:
         Aggregate metric/validation rows, also saved to summary.json and CSV.
         Sorting uses validation loss; test scores do not select settings.
     """
     rows = {}
-    for path in sorted(out.glob("*/split_*/seed_*/record.json")):
-        rec = json.loads(path.read_text())
+    for rec in records:
         rows.setdefault(rec["config"], {}).setdefault(rec["split"], []).append(rec)
     summary = []
     for name, by_split in rows.items():
@@ -791,6 +848,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     }
     benchmark = None  # built on first use, so a finished run resumes instantly
     implementation = implementation_hashes()
+    records = []
     total = len(configs) * len(args.splits) * len(args.seeds)
     done = 0
     for split in args.splits:
@@ -800,7 +858,6 @@ def main(argv: Sequence[str] | None = None) -> None:
             configs, args.seeds
         ):
             done += 1
-            run_dir = args.out / name / f"split_{split}" / f"seed_{seed}"
             request = {
                 "dataset": args.dataset,
                 "split": split,
@@ -809,11 +866,13 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "train": train_cfg,
                 "inputs": inputs,
                 "implementation": implementation,
+                "runtime": {key: env[key] for key in ("python", "torch", "cuda", "gpu")}
+                | {"device": args.device},
             }
-            if (run_dir / "record.json").exists():
-                validate_resume(
-                    json.loads((run_dir / "record.json").read_text()), request, run_dir
-                )
+            parent = args.out / name / f"split_{split}" / f"seed_{seed}"
+            run_dir, saved = resolve_run(parent, request)
+            if saved is not None:
+                records.append(saved)
                 print(f"[{done}/{total}] {run_dir} done, skipping")
                 continue
             if benchmark is None:
@@ -832,8 +891,11 @@ def main(argv: Sequence[str] | None = None) -> None:
             record["preprocessing"] = preprocessing
             record["environment"] = {**env, "device": args.device}
             record["request"] = request
+            record["run_directory"] = str(run_dir.relative_to(args.out))
             record["artifacts"] = artifact_hashes(run_dir)
             (run_dir / "record.json").write_text(json.dumps(record, indent=2) + "\n")
+            records.append(record)
+            print(f"Saved run: {run_dir}")
             m = record["test_metrics"]
             print(
                 f"[{done}/{total}] {name} split {split} seed {seed}: "
@@ -841,7 +903,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 f"IBS {m['ibs']:.3f}  IBLL {m['ibll']:.3f}  "
                 f"({record['train_seconds']:.1f}s)"
             )
-    for entry in summarize(args.out):
+    for entry in summarize(args.out, records):
         print(
             f"{entry['config']}: {entry['fits']} fits, val NLL "
             f"{entry['val_nll_mean']:.4f}, C^td {entry['c_td_mean']:.3f} "
