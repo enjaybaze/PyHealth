@@ -49,3 +49,6 @@ individual or clinical calibration.
 
 Metric inputs must be finite probabilities in [0, 1], nonincreasing within
 1e-6 along finite, nonnegative and strictly increasing time grids.
+
+For a complete train/evaluate/calibration example, see
+:doc:`../../survival_benchmark`.

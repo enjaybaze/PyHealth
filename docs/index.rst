@@ -220,6 +220,7 @@ Quick Navigation
    how_to_get_started
    install
    tutorials
+   survival_benchmark
    .. advance_tutorials
 
 
