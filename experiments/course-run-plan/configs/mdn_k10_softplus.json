@@ -1,0 +1,10 @@
+{
+  "model": {
+    "num_components": 10,
+    "hidden_dim": 32,
+    "transform": "softplus"
+  },
+  "train": {
+    "lr": 0.001
+  }
+}

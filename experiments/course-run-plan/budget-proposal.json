@@ -1,0 +1,27 @@
+{
+  "status": "proposal awaiting joint agreement",
+  "jointly_approved": false,
+  "fits": 300,
+  "counts": {
+    "cox": 60,
+    "deepsurv": 60,
+    "mdn": 180
+  },
+  "datasets": [
+    "gbsg",
+    "support2"
+  ],
+  "released_splits": 10,
+  "initialization_seeds": [
+    1
+  ],
+  "candidate_trials_per_model_dataset_split": 3,
+  "neural_epoch_cap": 100,
+  "neural_patience": 10,
+  "baseline_selection": "validation IBS within each model and released split",
+  "mdn_selection": "validation NLL within each released split",
+  "ablations": "fixed paper-default surrounding configuration; reuse matching K10 softplus fits",
+  "calibration": "exact saved observed-time predictions; Algorithm 2 bins/floor fixed",
+  "optional_scope": "no METABRIC, extra seeds or sensitivity fits in this budget",
+  "schedule": "pause Oct 31-Nov 2; original result target Nov 16; dates need joint confirmation if setup changes"
+}

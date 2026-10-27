@@ -1,0 +1,25 @@
+{
+  "jointly_approved": false,
+  "fits": 300,
+  "counts": {
+    "cox": 60,
+    "deepsurv": 60,
+    "mdn": 180
+  },
+  "pilot_basis": "Final single-feature-checkout CPU job 6622263, released split 1/seed 1",
+  "stage_seconds": {
+    "gbsg-baselines": 34.73603956983425,
+    "support2-baselines": 51.133938021957874,
+    "gbsg-mdn": 57.109835600014776,
+    "support2-mdn": 85.32050372008234
+  },
+  "conservative_serial_hours": 4.991924776198963,
+  "method": "60 times each dataset's two-baseline process plus 90 times each dataset's MDN process. Includes measured startup, loading and evaluation; deliberately charges each baseline fit the full paired process.",
+  "proposed_cpu_job_hours": 15,
+  "cpus_per_job": 4,
+  "proposed_cpu_core_hours": 60,
+  "proposed_memory_gb_per_job": 16,
+  "limits": "One split and default settings measured. Width, K, early stopping, filesystem and queue time vary. Reserve is a proposal, not a guaranteed wall time or a completed full grid.",
+  "selection": "Baseline configurations by validation IBS; MDN configurations by validation NLL. Never choose by test score.",
+  "code_revision": "18cc21629d052b3d6e86ed66fc648e83de3fcdf1"
+}

@@ -1,5 +1,40 @@
 # Experiment runner (T5, used in T8)
 
+> **Superseded for T8 (Oct 27).** Aritra's PR #1, merged into
+> `feat/survival-mdn` as `d473380`, moved this runner into the PR as
+> `examples/survival_benchmark/run_survival_mdn.py` and added D-calibration,
+> exact observed-time probabilities and versioned run folders. On split 1
+> it reproduces this runner's numbers exactly (GBSG val NLL 0.3557,
+> SUPPORT 0.5447). Run the final experiments with `run_mdn_plan.py`, which
+> runs the agreed plan in `course-run-plan/` through that runner. This file
+> and `run_survival_mdn.py` stay as the record of the pilots below.
+
+## Final MDN runs: `run_mdn_plan.py`
+
+`course-run-plan/` is Aritra's agreed plan, from his Oct 26 handoff: 300
+fits in total, of which NJ owns the 180 MDN fits. `run_mdn_plan.py` swaps
+the plan's placeholder paths for real ones and runs the fits in two stages:
+
+1. **Tuning (60 fits):** K=10 softplus, the slower learning rate and the
+   wider network, on 10 splits × 2 datasets.
+2. **Ablations (120 fits):** K = 1, 2, 3, 5, 20, and K=10 with the exp
+   transform.
+
+The script stops at the first failure and shows that fit's log. Rerunning
+the same command reuses every completed fit.
+
+```bash
+conda activate survmdn
+cd ~/survmdn-notes/experiments
+python run_mdn_plan.py --pyhealth ~/PyHealth \
+    --gbsg-root ~/survmdn-data/csv --support-root ~/survmdn-data/support2 \
+    --released-root ~/survmdn-data/Survival-MDN --runs-root ~/runs/course \
+    --stage tuning
+```
+
+Checked Oct 27 with 2 fits in the sandbox: GBSG split 1 gave val NLL
+0.3557, matching the pilot, and a rerun reused both fits.
+
 `run_survival_mdn.py` trains SurvivalMDN on the authors' 10 released GBSG
 or SUPPORT splits (`--dataset gbsg|support2`) and records everything T8
 needs. It lives here, not in the PyHealth
