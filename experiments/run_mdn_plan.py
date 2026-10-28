@@ -1,4 +1,4 @@
-"""Run NJ's 180 SurvivalMDN fits from the agreed course run plan.
+"""Run NJ's 180 SurvivalMDN fits from the course run plan.
 
 The plan (course-run-plan/run-list.json, from Aritra's Oct 26 handoff) lists
 one command per fit with placeholder paths. This script swaps in your real

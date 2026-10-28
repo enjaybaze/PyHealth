@@ -6,12 +6,13 @@
 > exact observed-time probabilities and versioned run folders. On split 1
 > it reproduces this runner's numbers exactly (GBSG val NLL 0.3557,
 > SUPPORT 0.5447). Run the final experiments with `run_mdn_plan.py`, which
-> runs the agreed plan in `course-run-plan/` through that runner. This file
+> runs the plan in `course-run-plan/` through that runner. This file
 > and `run_survival_mdn.py` stay as the record of the pilots below.
 
 ## Final MDN runs: `run_mdn_plan.py`
 
-`course-run-plan/` is Aritra's agreed plan, from his Oct 26 handoff: 300
+`course-run-plan/` is Aritra's proposed plan, from his Oct 26 handoff
+(approval status: see `course-run-plan/budget-proposal.json`): 300
 fits in total, of which NJ owns the 180 MDN fits. `run_mdn_plan.py` swaps
 the plan's placeholder paths for real ones and runs the fits in two stages:
 
