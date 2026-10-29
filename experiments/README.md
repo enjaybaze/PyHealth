@@ -5,80 +5,59 @@
 > `examples/survival_benchmark/run_survival_mdn.py` and added D-calibration,
 > exact observed-time probabilities and versioned run folders. On split 1
 > it reproduces this runner's numbers exactly (GBSG val NLL 0.3557,
-> SUPPORT 0.5447). Run the final experiments with `run_mdn_plan.py`, which
-> runs the plan in `course-run-plan/` through that runner. This file
-> and `run_survival_mdn.py` stay as the record of the pilots below.
+> SUPPORT 0.5447). The final experiments use `run_course_plan.py` below.
+> This file and `run_survival_mdn.py` stay as the record of the pilots.
 
-## Final MDN runs: `run_mdn_plan.py`
+## Final runs: `run_course_plan.py`
 
-`course-run-plan/` is Aritra's proposed plan, from his Oct 26 handoff
-(approval status: see `course-run-plan/budget-proposal.json`): 300
-fits in total, of which NJ owns the 180 MDN fits. `run_mdn_plan.py` swaps
-the plan's placeholder paths for real ones and runs the fits in two stages:
+`course-run-plan/` is Aritra's Oct 26 plan of 300 fits. NJ and Aritra
+approved it on Oct 28, and agreed to run all three models on NJ's VM on the
+CPU, so every reported number comes from one environment. The fits split
+into three stages, run in this order:
 
-1. **Tuning (60 fits):** K=10 softplus, the slower learning rate and the
-   wider network, on 10 splits × 2 datasets.
-2. **Ablations (120 fits):** K = 1, 2, 3, 5, 20, and K=10 with the exp
-   transform.
+| Stage | Fits | Model | Owner of results |
+| --- | --- | --- | --- |
+| Baselines | 120 | Cox and DeepSurv | Aritra |
+| MDN tuning | 60 | K=10 softplus, slower learning rate, wider network | NJ |
+| MDN ablations | 120 | K = 1, 2, 3, 5, 20; K=10 with exp | NJ |
 
-The script stops at the first failure and shows that fit's log. Rerunning
-the same command reuses every completed fit.
+Aritra asked for three things before the full batch. The launcher enforces
+all three:
+
+- **Pinned packages.** `baseline-requirements-pinned.txt` lists the exact
+  versions from his tested PACE environment, and the preflight checks them
+  along with the core versions.
+- **A baseline run that passes first.** The preflight runs
+  `tests.core.test_survival_benchmark` and fails if any test is skipped. It
+  then runs Cox, DeepSurv and MDN on split 1 of both datasets and compares
+  each with his PACE pilot (within 0.005 for C^td and IBS, 0.002 for
+  validation NLL). Nothing launches unless the preflight passes. It reruns
+  only if the package versions, thread count or PyHealth commit change.
+- **The same CPU settings for every model.** Every fit runs with the GPU
+  hidden and the same thread count (`OMP_NUM_THREADS` and related
+  variables; default 4, as on PACE). The fits run one at a time.
+  `environment.json` records the CPU model, thread count, package versions
+  and commits.
+
+Checked Oct 28 in the sandbox: the preflight passed, and all six split-1
+results matched the PACE pilot exactly (for example, GBSG Cox C^td 0.6367,
+SUPPORT MDN val NLL 0.5447). Three Cox fits ran, then were reused on a
+rerun, and `--package` produced a 6.6 MB bundle with no cache folders.
 
 ```bash
 conda activate survmdn
+pip install -r ~/survmdn-notes/experiments/baseline-requirements-pinned.txt
 cd ~/survmdn-notes/experiments
-python run_mdn_plan.py --pyhealth ~/PyHealth \
+nohup python run_course_plan.py --pyhealth ~/PyHealth \
     --gbsg-root ~/survmdn-data/csv --support-root ~/survmdn-data/support2 \
     --released-root ~/survmdn-data/Survival-MDN --runs-root ~/runs/course \
-    --stage tuning
+    > ~/runs/course.log 2>&1 &
+tail -f ~/runs/course.log
+# when finished, bundle everything for Aritra:
+python run_course_plan.py --pyhealth ~/PyHealth --gbsg-root ~/survmdn-data/csv \
+    --support-root ~/survmdn-data/support2 --released-root ~/survmdn-data/Survival-MDN \
+    --runs-root ~/runs/course --package ~/runs/course-results.tar.gz
 ```
-
-Checked Oct 27 with 2 fits in the sandbox: GBSG split 1 gave val NLL
-0.3557, matching the pilot, and a rerun reused both fits.
-
-`run_survival_mdn.py` trains SurvivalMDN on the authors' 10 released GBSG
-or SUPPORT splits (`--dataset gbsg|support2`) and records everything T8
-needs. It lives here, not in the PyHealth
-PR. It imports PyHealth from `feat/survival-mdn` (198659d or later).
-
-## What one fit does
-
-1. Load the split from the released `.npz` files and apply the paper
-   protocol:
-   - **GBSG:** `gbsg_released_split_ids`; raw features; times are
-     `months / 87.36 + 0.002`.
-   - **SUPPORT:** `support2_released_split_ids`; all 27 features are
-     standardized on that split's training patients; times are
-     `days / 365.25 + 0.001`. The fitted means and scales are saved in
-     each record.
-2. Train with the PyHealth `Trainer` using the authors' defaults:
-   - RMSprop, learning rate 1e-3
-   - batch size 512, gradient clipping at 100
-   - up to 100 epochs, early stopping after 10 epochs without a better
-     validation NLL
-   - the best validation epoch is reloaded at the end
-3. Score the test set with `survival_curve_metrics_fn` (C^td, IBS and IBLL
-   at the 1e-8, 0.2 and 0.4 horizons).
-4. Also compute the **reference-compatible** widest-horizon IBS and IBLL
-   (see below).
-5. Save the outputs:
-
-   ```
-   <out>/<config>/split_<n>/seed_<s>/
-       record.json       config, counts, val NLL, metrics, best epoch,
-                         epochs run, seconds, environment, git commits
-       predictions.npz   test source IDs, times, events, a 200-point grid,
-                         survival curves
-       trainer/          PyHealth log, best.ckpt, last.ckpt
-   <out>/summary.json, summary.csv
-   ```
-
-`summary.*` reports, per config, the mean and SD across splits of every
-metric. Seeds are averaged within a split first. Rows are sorted by mean
-validation NLL. **Pick configs by validation NLL only. Test metrics are for
-reporting.**
-
-Completed fits are skipped, so a stopped run resumes with the same command.
 
 ## Reproducibility
 
