@@ -1,0 +1,128 @@
+{
+  "versions": [],
+  "checks": [
+    {
+      "check": "tests.core.test_survival_benchmark",
+      "passed": true,
+      "detail": "OK"
+    },
+    {
+      "check": "gbsg cox split 1 vs PACE pilot",
+      "passed": true,
+      "detail": {
+        "c_td": [
+          0.6367,
+          0.6367
+        ],
+        "ibs": [
+          0.1763,
+          0.1763
+        ]
+      }
+    },
+    {
+      "check": "gbsg deepsurv split 1 vs PACE pilot",
+      "passed": true,
+      "detail": {
+        "c_td": [
+          0.6717,
+          0.6717
+        ],
+        "ibs": [
+          0.1645,
+          0.1645
+        ]
+      }
+    },
+    {
+      "check": "gbsg mdn split 1 vs PACE pilot",
+      "passed": true,
+      "detail": {
+        "val_nll": [
+          0.3557,
+          0.3557
+        ],
+        "c_td": [
+          0.6558,
+          0.6558
+        ]
+      }
+    },
+    {
+      "check": "support2 cox split 1 vs PACE pilot",
+      "passed": true,
+      "detail": {
+        "c_td": [
+          0.5831,
+          0.5831
+        ],
+        "ibs": [
+          0.1927,
+          0.1927
+        ]
+      }
+    },
+    {
+      "check": "support2 deepsurv split 1 vs PACE pilot",
+      "passed": true,
+      "detail": {
+        "c_td": [
+          0.5911,
+          0.591
+        ],
+        "ibs": [
+          0.1905,
+          0.1905
+        ]
+      }
+    },
+    {
+      "check": "support2 mdn split 1 vs PACE pilot",
+      "passed": true,
+      "detail": {
+        "val_nll": [
+          0.5446,
+          0.5447
+        ],
+        "c_td": [
+          0.6222,
+          0.6219
+        ]
+      }
+    }
+  ],
+  "passed": true,
+  "environment": {
+    "python": "3.13.16",
+    "cpu_model": "Intel(R) Xeon(R) CPU @ 2.20GHz",
+    "cpu_count": 16,
+    "threads_per_fit": 4,
+    "device": "cpu",
+    "versions": {
+      "numpy": "2.2.6",
+      "torch": "2.14.1",
+      "scikit-learn": "1.7.2",
+      "pandas": "2.3.3",
+      "scipy": "1.18.1",
+      "scikit-survival": "0.25.0",
+      "pycox": "0.3.0",
+      "torchtuples": "0.2.2",
+      "ecos": "2.0.14",
+      "osqp": "0.6.7.post3",
+      "qdldl": "0.1.9.post1",
+      "numba": "0.68.0",
+      "llvmlite": "0.50.0",
+      "numexpr": "2.14.2",
+      "feather-format": "0.4.1",
+      "py7zr": "1.1.4",
+      "inflate64": "1.0.4",
+      "multivolumefile": "0.2.3",
+      "pybcj": "1.0.8",
+      "pycryptodomex": "3.24.1",
+      "pyppmd": "1.3.1",
+      "texttable": "1.7.2"
+    },
+    "pyhealth_commit": "d47338023e6dd0f15cc2bfb09162421f208a8def",
+    "team_notes_commit": "4cc1695e7b7f5ffd06bcaf2a8beeec8400d23f79"
+  }
+}

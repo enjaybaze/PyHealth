@@ -1,0 +1,13 @@
+dataset,comparison,metric,mean,sd,se,n,better_splits,p_paired_t
+gbsg,mdn - deepsurv,c_td,-0.0127,0.0167,0.0053,10,2,0.0391
+gbsg,mdn - deepsurv,ibs,0.0061,0.0063,0.002,10,2,0.0137
+gbsg,mdn - deepsurv,ibll,-0.0157,0.0161,0.0051,10,2,0.0133
+gbsg,mdn - cox,c_td,0.0051,0.0217,0.0069,10,9,0.4778
+gbsg,mdn - cox,ibs,-0.0008,0.0061,0.0019,10,5,0.6897
+gbsg,mdn - cox,ibll,0.0017,0.0145,0.0046,10,5,0.7164
+support2,mdn - deepsurv,c_td,0.0219,0.0091,0.0029,10,10,0.0
+support2,mdn - deepsurv,ibs,-0.0021,0.0017,0.0005,10,8,0.0038
+support2,mdn - deepsurv,ibll,0.0042,0.0044,0.0014,10,8,0.0142
+support2,mdn - cox,c_td,0.0306,0.0108,0.0034,10,10,0.0
+support2,mdn - cox,ibs,-0.0047,0.001,0.0003,10,10,0.0
+support2,mdn - cox,ibll,0.0096,0.004,0.0013,10,10,0.0

@@ -1,0 +1,9 @@
+dataset,metric,softplus_mean,exp_mean,softplus_minus_exp,softplus_better_splits,p_paired_t
+gbsg,val_nll,0.3664,0.362,0.0044,3,0.1024
+gbsg,c_td,0.6616,0.6621,-0.0005,4,0.8679
+gbsg,ibs,0.1746,0.1728,0.0018,4,0.2083
+gbsg,ibll,-0.5161,-0.5117,-0.0045,4,0.1398
+support2,val_nll,0.5319,0.5171,0.0148,0,0.0003
+support2,c_td,0.6267,0.6256,0.0011,5,0.4983
+support2,ibs,0.1893,0.1897,-0.0005,8,0.1196
+support2,ibll,-0.5593,-0.5581,-0.0012,4,0.1965
