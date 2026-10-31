@@ -242,6 +242,7 @@ Quick Navigation
    api/metrics
    api/medcode
    api/calib
+   survival_pipeline
 
 
 .. toctree::

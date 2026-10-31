@@ -22,7 +22,21 @@ from .multilabel import multilabel_metrics_fn
 from .ranking import ranking_metrics_fn
 from .regression import regression_metrics_fn, timeseries_regression_metrics_fn
 
+from .survival_curve import (
+    concordance_td as concordance_td,
+    d_calibration as d_calibration,
+    integrated_binomial_loglik_td as integrated_binomial_loglik_td,
+    integrated_brier_score_td as integrated_brier_score_td,
+    survival_curve_metrics_fn as survival_curve_metrics_fn,
+)
+
+
 __all__ = [
+    "concordance_td",
+    "d_calibration",
+    "integrated_binomial_loglik_td",
+    "integrated_brier_score_td",
+    "survival_curve_metrics_fn",
     "ComprehensivenessMetric",
     "Evaluator",
     "RemovalBasedMetric",
