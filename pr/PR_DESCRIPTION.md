@@ -97,23 +97,32 @@ RMSprop at 1e-3, at most 100 epochs, patience 10, seed 1). Checkpoints were
 chosen by validation NLL only, and time labels were identical in both
 conditions. The primary comparison is test IBS at the widest horizon.
 
-> **Draft numbers, Nov 3:** computed from the 20 records on NJ's VM. Confirm
-> against Aritra's verified summary before opening.
-
 | Metric (test unless noted) | Raw | Standardized | Standardized − raw (SD) | Standardized better |
 | --- | --- | --- | --- | --- |
-| IBS, widest horizon (primary; lower is better) | 0.174 | 0.168 | −0.006 (0.005) | 9/10 splits |
-| C^td (higher is better) | 0.664 | 0.673 | +0.009 (0.010) | 7/10 |
-| IBLL (higher is better) | −0.515 | −0.500 | +0.015 (0.012) | 9/10 |
-| Validation NLL (lower is better) | 0.367 | 0.363 | −0.004 (0.026) | 6/10 |
-| D-calibration not rejected (p > 0.05) | 10/10 | 9/10 | | |
+| IBS, widest horizon (primary; lower is better) | 0.1741 | 0.1677 | −0.0064 (0.0051) | 9/10 splits |
+| C^td (higher is better) | 0.6641 | 0.6730 | +0.0089 (0.0103) | 7/10 |
+| IBLL (higher is better) | −0.5147 | −0.5003 | +0.0145 (0.0116) | 9/10 |
+| Validation NLL (lower is better) | 0.3668 | 0.3631 | −0.0037 (0.0255) | 6/10 |
 
-Means over the ten released splits. Training-only standardization improved test
-IBS and IBLL in 9 of 10 splits, with a smaller and less consistent gain in
-concordance. Validation NLL barely changed. Standardized fits stopped earlier
-(best epoch 6–14 vs 10–28), and no fit reached the 100-epoch cap. Splits share
-patients, so these are descriptive differences across splits, not independent
-tests. The 20 fits took 13.4 minutes on one CPU with 4 threads.
+Means over the ten released splits; SDs are across the ten paired
+differences. Splits reuse patients, so these are descriptive differences, not
+independent tests. Training-only standardization improved test IBS and IBLL in
+9 of 10 splits, with a smaller and less consistent gain in concordance.
+Validation NLL barely changed. Standardized fits stopped earlier (best epoch
+6–14 vs 10–28), and no fit reached the 100-epoch cap. The 20 fits took 13.4
+minutes on one CPU with 4 threads. All 20 records were checked independently,
+and every best checkpoint reloads to the saved predictions within 1e-6.
+
+D-calibration p-values by split (raw / standardized):
+
+| Split | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Raw | 0.735 | 0.991 | 0.856 | 0.315 | 0.204 | 0.968 | 0.727 | 0.981 | 0.531 | 0.864 |
+| Standardized | 0.393 | 0.979 | 0.980 | **0.035** | 0.901 | 0.526 | 0.885 | 0.854 | 0.292 | 0.595 |
+
+Calibration is not rejected (p > 0.05) in 10/10 raw and 9/10 standardized
+splits; standardized split 4 is the exception. These counts alone don't show
+that standardization worsens calibration.
 
 ### Paper reproduction (our own implementation, not the upstream model)
 
@@ -144,7 +153,16 @@ widest-horizon convention, to match the paper.
   is SUPPORT DeepSurv's IBLL, just outside (−0.5632 vs −0.559).
 - On SUPPORT, MDN beats DeepSurv on C^td in all 10 splits (+0.022 on average).
   On GBSG, our DeepSurv is ahead of MDN in 8 of 10 splits, even with default
-  settings; the paper reports the opposite.
+  settings; the paper reports the opposite. Our DeepSurv standardizes its
+  inputs. In the ablation above, training-only standardization improved the
+  upstream SurvivalMDN on GBSG and brought its performance close to our earlier
+  DeepSurv results. This supports preprocessing as a possible contributor to
+  the gap, although the comparison across experiments doesn't show how much it
+  explains.
+- On raw GBSG inputs, the upstream SurvivalMDN (C^td 0.664, IBS 0.174) is close
+  to our own implementation with its default settings (0.662, 0.175). Their
+  aggregate performance is similar, but individual predictions differ, so the
+  two are not equivalent implementations.
 - Ablations: one mixture component fits clearly worse. Under our settings,
   three components give most of the likelihood gain. The exponential time
   transform fits SUPPORT's validation data better than softplus in all 10
