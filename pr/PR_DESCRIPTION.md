@@ -1,85 +1,196 @@
-# Draft PR description
+# Draft upstream PR description
 
-Title: **Add Survival MDN: survival mixture density model, survival-curve metrics, and GBSG/SUPPORT2 time-to-event tasks**
+Title: **Add GBSG/SUPPORT2 time-to-event tasks, released-split helpers and
+survival-curve metrics for SurvivalMDN**
 
-Open from `enjaybaze:feat/survival-mdn` into `sunlabuiuc:master` as a
-**draft**, with "Allow edits by maintainers" ticked. Everything below the
-line is the PR body.
+Open from `arittrosaha:aritra/survival-pipeline-integration` into
+`sunlabuiuc:master`, with "Allow edits by maintainers" ticked. Reviewed in
+`enjaybaze/PyHealth#2`, currently at `e32a85b`. Everything below the line is the
+PR body. Fill in the issue number and the ablation results before opening.
 
 ---
 
-## Summary
+**Contributors:** Aritra Saha (@arittrosaha, asaha98@gatech.edu) and
+Ugochukwu (NJ) Njoku (@enjaybaze), Georgia Tech CSE 6250
 
-This PR adds a full time-to-event pipeline to PyHealth, reproducing
-**Survival Mixture Density Networks** (Han, Goldstein & Ranganath, MLHC
-2022; [PMLR](https://proceedings.mlr.press/v182/han22a.html),
-[arXiv](https://arxiv.org/abs/2208.10759)). It has four parts:
+**Contribution type:** Dataset + Task, with survival-curve metrics and examples
 
-- **Model:** `SurvivalMDN`, a neural network that outputs a full survival
-  curve S(t | x) for each patient.
-- **Metrics:** C^td, IBS and IBLL, the paper's evaluation metrics.
-- **Data:** a GBSG dataset loader, plus time-to-event tasks for GBSG and
-  SUPPORT2.
-- **Paper splits:** helpers that load the authors' ten released splits
-  with their exact preprocessing.
+**Paper:** Han, Goldstein & Ranganath, *Survival Mixture Density Networks*,
+MLHC 2022 ([PMLR](https://proceedings.mlr.press/v182/han22a.html),
+[arXiv](https://arxiv.org/abs/2208.10759))
 
-PyHealth has no survival mode today. Existing SUPPORT2 tasks predict
-fixed-horizon probabilities, not censored times. This PR keeps the
-existing `Trainer` unchanged. The label is a packed `survival: [time,
-event]` tensor, so the model runs with `mode=None` and trains on its own
-censored likelihood.
+**Scope agreed in:** #&lt;issue number&gt;
 
-**Contribution type:** model + metrics + datasets/tasks.
+## Description
 
-**Contributors:** NJ Njoku (@enjaybaze) and Aritra Saha (@arittrosaha),
-Georgia Tech CSE 6250.
+This PR builds a complete survival workflow around the `SurvivalMDN` model
+merged in #1279. It adds the paper's two benchmark datasets as PyHealth
+datasets and tasks, and the metrics needed to evaluate predicted survival
+curves. **The upstream model, its tests and the `Trainer` are unchanged.**
 
-## What's included
+- **GBSG dataset:** `GBSGDataset`, plus `prepare_gbsg_csv`, which converts the
+  public DeepSurv HDF5 file to CSV and records its provenance.
+- **Time-to-event tasks:** `SurvivalTimeToEventGBSG` (7 features) and
+  `SurvivalTimeToEventSupport2` (the paper's 8,873-patient complete-case cohort,
+  27 features, built on the existing `Support2Dataset`). Both output `features`,
+  `duration` and `event`, so they work with `SurvivalMDN` and the standard
+  `Trainer` as they are. Optional arguments apply feature scaling fitted on
+  training patients only, and the paper's time conventions.
+- **Released splits:** `gbsg_released_split_ids` and
+  `support2_released_split_ids` map the authors' ten released
+  train/validation/test splits onto dataset records, so users can run the
+  paper's exact protocol. `gbsg_paper_time_transform` and
+  `support2_paper_time_transform` return the matching time conventions.
+- **Survival-curve metrics** (`pyhealth.metrics.survival_curve`):
+  time-dependent concordance (Antolini C^td), integrated Brier score and
+  integrated binomial log-likelihood with IPCW weighting at censoring-quantile
+  horizons, D-calibration (Haider et al.), and `survival_curve_metrics_fn`.
+  PyHealth had no metrics for full survival curves; #1279 evaluates them only
+  inside its example.
+- **Examples:** an end-to-end pipeline (`examples/survival_pipeline.py`), a
+  loading and checkpoint-reload demo, and an optional benchmark that compares
+  `SurvivalMDN` with Cox and DeepSurv on the released splits.
+  `--standardize-gbsg` switches GBSG to training-only feature standardization.
+  Cox and DeepSurv need two optional packages (`scikit-survival`, `pycox`),
+  listed in the example's own `requirements.txt`. The library itself needs no
+  new dependencies.
 
-| Area | Files | What it adds |
-| --- | --- | --- |
-| Model | `pyhealth/models/survival_mdn.py` | `SurvivalMDN`: a Gaussian mixture over a transformed time (softplus or exp), log-domain censored negative log-likelihood, `predict_survival(features, t_grid)`. Architecture follows the authors' reference implementation (bias-free Linear → BatchNorm → PReLU blocks, same head initialization and clamps). `time_scale` is a buffer, so checkpoints carry it. |
-| Metrics | `pyhealth/metrics/survival_curve.py` | IPCW time-dependent concordance (Antolini C^td), integrated Brier score and integrated binomial log-likelihood at censoring-quantile horizons, `survival_curve_metrics_fn`. |
-| GBSG data | `pyhealth/datasets/gbsg.py`, `configs/gbsg.yaml` | `prepare_gbsg_csv` (DeepSurv HDF5 → CSV with provenance), `GBSGDataset`, `gbsg_released_split_ids`, `gbsg_paper_time_transform`. |
-| SUPPORT2 data | `pyhealth/datasets/support2.py` | `support2_released_split_ids`, `support2_paper_time_transform`. Builds on the existing `Support2Dataset`. |
-| Tasks | `pyhealth/tasks/survival_time_to_event.py` | `SurvivalTimeToEventGBSG` (7 features) and `SurvivalTimeToEventSupport2` (8,873-patient benchmark cohort, 27 features). Both emit `survival: [time, event]` and take optional training-only scaling and a time divisor/offset. |
-| Examples | `examples/gbsg_survival_prediction_survival_mdn.py`, `examples/gbsg_survival_loading.py` | Train, evaluate and compare mixture sizes and transforms. `--synthetic` needs no downloads and runs in seconds. Loading and checkpoint demo. |
-| Docs | `docs/api/...` | Pages for the model, metrics, GBSG dataset and both tasks; SUPPORT2 page extended. |
-| Tests | `tests/core/test_survival_mdn.py`, `test_survival_curve_metrics.py`, `test_gbsg.py`, `test_support2_survival.py`, `test_survival_mdn_example.py`, `survival_synthetic.py` | 60 tests. They check the math against closed-form densities, verify p(t) = −dS/dt with autograd, recover a known distribution, use hand-computed metric fixtures, and cover released-split mapping, checkpoint reload and the example end to end. No downloads; seconds to run. |
+## Files to review
+
+| Files | What to look at |
+| --- | --- |
+| `pyhealth/datasets/gbsg.py`, `pyhealth/datasets/configs/gbsg.yaml` | GBSG dataset, HDF5 conversion, released-split mapping |
+| `pyhealth/datasets/support2.py` | Added SUPPORT2 released-split mapping and time convention (existing code untouched) |
+| `pyhealth/tasks/survival_time_to_event.py` | The two tasks |
+| `pyhealth/metrics/survival_curve.py` | C^td, IBS, IBLL, D-calibration |
+| `examples/survival_pipeline.py`, `examples/survival_pipeline.md` | Start here: dataset → task → `SurvivalMDN` → `Trainer` → metrics |
+| `examples/gbsg_survival_loading.py` | Loading and checkpoint reload |
+| `examples/survival_benchmark/` | Optional MDN/Cox/DeepSurv benchmark and calibration replay |
+| `tests/core/test_gbsg.py`, `test_gbsg_benchmark_preprocessing.py`, `test_support2_survival.py`, `test_survival_curve_metrics.py`, `test_survival_pipeline.py`, `test_survival_benchmark.py` | Tests |
+| `docs/api/...`, `docs/survival_pipeline.rst` | API pages and a workflow guide |
+
+All tests use synthetic data, download nothing and train for at most one
+epoch. Benchmark tests skip when the optional packages are missing.
 
 ## How it was checked
 
-- **Model vs. the authors' code.** With the same weights, our mixture
-  parameters and survival curves match the authors' model to float
-  precision, in both train and eval mode.
-- **Metrics vs. the authors' evaluator.** Agreement is within 2e-15 at
-  every horizon, with one exception. When the last test time is censored,
-  the authors' evaluator pairs its widest-horizon curves with a shifted
-  time grid. PyHealth keeps the grids aligned, so its values differ there.
-  The docs explain this.
-- **Released splits.** All 10 GBSG and all 10 SUPPORT splits map
-  one-to-one onto the source records. With the paper's preprocessing, the
-  tasks reproduce the authors' arrays to float32 precision: SUPPORT
-  standardized features within 7.6e-6, times within 4e-7.
-- **CI.** `tools/check_pr_rules.py` passes, and the new tests pass under
-  `python -m unittest discover -t tests -s tests/core`. The full
-  `tests/core` suite on the merged branch: 1,514 passed, 90 skipped,
-  0 failed.
+- **CI:** at `e32a85b`, the full core suite passed (1,834 passed, 105 skipped,
+  450 subtests), along with the NLP tests and `tools/check_pr_rules.py`.
+- **Metrics vs. the paper's evaluator:** with the same inputs, our C^td, IBS
+  and IBLL match the authors' released `metrics.py` to within 2e-15. The one
+  exception is described under "Notes for reviewers".
+- **Released splits:** all 10 GBSG and all 10 SUPPORT splits map one-to-one onto
+  the source records. With the paper's preprocessing, the tasks reproduce the
+  authors' arrays to float32 precision.
+- **Upstream model:** five-epoch pilots on GBSG and SUPPORT split 1, on CPU and
+  CUDA, trained with finite losses, falling validation loss, and exact
+  checkpoint reload.
 
-## Data and licensing
+## Results
 
-The authors' released split files come from their repository, which has
-no license. This PR only *reads* files the user downloads; none are
-committed. GBSG comes from the
-[DeepSurv benchmark](https://github.com/jaredleekatzman/DeepSurv). SUPPORT2
-comes from [Vanderbilt Biostatistics](https://hbiostat.org/data/repo/supportdesc).
+### Ablation with PyHealth's SurvivalMDN
+
+Does training-only feature standardization change GBSG performance with the
+upstream model? Both conditions ran on all ten released splits, with the model
+and training settings fixed (10 components, 3 × 32 hidden layers, softplus,
+RMSprop at 1e-3, at most 100 epochs, patience 10, seed 1). Checkpoints were
+chosen by validation NLL only, and time labels were identical in both
+conditions. The primary comparison is test IBS at the widest horizon.
+
+> **TODO:** paired differences (standardized − raw) per split, their mean and
+> SD, and split win counts for IBS, C^td, IBLL and validation NLL. Add these
+> after Aritra has checked the 20 output records.
+
+### Paper reproduction (our own implementation, not the upstream model)
+
+The paper reproduction for our course project used our own Survival MDN
+implementation, written before #1279 was merged. It is **not** the model in
+this PR. Its code is preserved at tag
+[`course-run-2026-10-29`](https://github.com/enjaybaze/PyHealth/tree/course-run-2026-10-29)
+in our fork, and the analysis is on the
+[`team-notes` branch](https://github.com/enjaybaze/PyHealth/tree/team-notes/experiments/results-2026-10-29).
+It ran 300 fits on the authors' ten released splits, all on one CPU
+environment. Each model's settings were chosen per split on validation data
+only.
+
+| Dataset | Model | C^td (± SD) | IBS | IBLL | Paper C^td / IBS / IBLL |
+| --- | --- | --- | --- | --- | --- |
+| GBSG | Cox | 0.658 ± 0.019 | 0.174 | −0.514 | 0.645 / 0.177 / −0.523 |
+| GBSG | DeepSurv | 0.675 ± 0.016 | 0.167 | −0.497 | 0.663 / 0.172 / −0.509 |
+| GBSG | Survival MDN | 0.663 ± 0.020 | 0.173 | −0.512 | 0.668 / 0.172 / −0.504 |
+| SUPPORT | Cox | 0.596 ± 0.009 | 0.194 | −0.569 | 0.596 / 0.194 / −0.568 |
+| SUPPORT | DeepSurv | 0.604 ± 0.008 | 0.191 | −0.563 | 0.609 / 0.190 / −0.559 |
+| SUPPORT | Survival MDN | 0.626 ± 0.010 | 0.189 | −0.559 | 0.628 / 0.190 / −0.559 |
+
+Means over the ten released test splits. IBS and IBLL use the authors'
+widest-horizon convention, to match the paper.
+
+- Survival MDN matches the paper within two published standard errors on all
+  six of its comparisons; 17 of the 18 comparisons pass overall. The exception
+  is SUPPORT DeepSurv's IBLL, just outside (−0.5632 vs −0.559).
+- On SUPPORT, MDN beats DeepSurv on C^td in all 10 splits (+0.022 on average).
+  On GBSG, our DeepSurv is ahead of MDN in 8 of 10 splits, even with default
+  settings; the paper reports the opposite.
+- Ablations: one mixture component fits clearly worse. Under our settings,
+  three components give most of the likelihood gain. The exponential time
+  transform fits SUPPORT's validation data better than softplus in all 10
+  splits, but the test results are mixed.
+
+## Timeline and overlap with #1279
+
+We developed our implementation independently. #1279 was merged while our work
+was in progress, and we found it on Oct 29. Every date below is from our
+fork's commit history or our correspondence.
+
+| Date (2026) | Event |
+| --- | --- |
+| Oct 16 | Our Survival MDN model and survival-curve metrics committed to our fork; GBSG dataset and task added |
+| Oct 18 | Released GBSG split support |
+| Oct 22 | SUPPORT2 task and released-split mapping |
+| **Oct 23** | **#1279 (`SurvivalMDN`, Neil Hajela) merged upstream** |
+| Oct 26–27 | D-calibration, input checks and the Cox/DeepSurv/MDN benchmark |
+| Oct 29 | 300-fit reproduction run on our own model; overlap with #1279 found while preparing this PR |
+| Oct 29–30 | Course staff and maintainers contacted; Dataset + Task scope approved; this branch rebuilt on upstream `master` around the merged model |
+| Oct 30–31 | Optional GBSG standardization added; CI passes at `e32a85b` |
+| Nov | Ablation with the upstream model (above) |
+
+**What we dropped:** our own `pyhealth/models/survival_mdn.py`. It used the same
+file and class name as #1279, so it stays in our fork for the course
+reproduction only.
+
+**Who built what:**
+
+| Component | Built by |
+| --- | --- |
+| GBSG dataset, HDF5 conversion and GBSG task | Aritra |
+| GBSG released-split mapping and time convention | NJ |
+| SUPPORT2 task, released-split mapping and time convention | NJ |
+| Survival-curve metrics (C^td, IBS, IBLL, `survival_curve_metrics_fn`) | NJ |
+| D-calibration and input validation | Aritra |
+| Cox/DeepSurv/MDN benchmark and calibration replay | Aritra |
+| Integration with the upstream model (duration/event outputs), pipeline example and workflow docs | Aritra |
+| GBSG standardization option and ablation design | Aritra |
+| Our original model and the 300-fit reproduction run and analysis | NJ (run on NJ's VM; baselines and verification by Aritra) |
 
 ## Notes for reviewers
 
-- The model lives at `pyhealth/models/survival_mdn.py`, and the metrics in
-  a new `pyhealth/metrics/survival_curve.py` with distinct function names.
-  That avoids overlapping with PR #948, which adds `pyhealth/metrics/survival.py`.
-- This branch includes a merge of current `master` (PyHealth 2.1.0).
-  The only conflicts were adjacent import lines.
-- Experiment results for the paper comparison will follow in a later
-  update. This draft is for review of the API and implementation.
+- **Time conventions.** Following the paper, GBSG times are
+  `months / cohort maximum + 0.002` and SUPPORT times are
+  `days / 365.25 + 0.001`. The GBSG maximum uses the full cohort, as the
+  authors' released files do. The task docstrings and
+  `docs/survival_pipeline.rst` say this explicitly. By default, both tasks keep
+  the source units.
+- **Widest-horizon IBS/IBLL.** When the last test time is censored, which
+  happens on every released GBSG and SUPPORT test split, the authors' evaluator
+  pairs its widest-horizon curves with a shifted time grid. PyHealth's metrics
+  keep the grids aligned. The benchmark reports both, labeled separately. In our
+  GBSG runs, the difference was at most 0.0017 IBS on any split.
+- **Data and licensing.** No data is committed. The helpers only read files the
+  user downloads: GBSG from the
+  [DeepSurv repository](https://github.com/jaredleekatzman/DeepSurv), SUPPORT2
+  from [Vanderbilt Biostatistics](https://hbiostat.org/data/repo/supportdesc),
+  and the released splits from the
+  [authors' repository](https://github.com/XintianHan/Survival-MDN).
+- **Docs placement.** `docs/index.rst` lists the workflow guide under Quick
+  Navigation. We asked in #pyhealth-questions where you'd prefer it and will
+  move it if needed.
