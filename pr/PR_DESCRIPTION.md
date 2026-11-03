@@ -97,9 +97,23 @@ RMSprop at 1e-3, at most 100 epochs, patience 10, seed 1). Checkpoints were
 chosen by validation NLL only, and time labels were identical in both
 conditions. The primary comparison is test IBS at the widest horizon.
 
-> **TODO:** paired differences (standardized − raw) per split, their mean and
-> SD, and split win counts for IBS, C^td, IBLL and validation NLL. Add these
-> after Aritra has checked the 20 output records.
+> **Draft numbers, Nov 3:** computed from the 20 records on NJ's VM. Confirm
+> against Aritra's verified summary before opening.
+
+| Metric (test unless noted) | Raw | Standardized | Standardized − raw (SD) | Standardized better |
+| --- | --- | --- | --- | --- |
+| IBS, widest horizon (primary; lower is better) | 0.174 | 0.168 | −0.006 (0.005) | 9/10 splits |
+| C^td (higher is better) | 0.664 | 0.673 | +0.009 (0.010) | 7/10 |
+| IBLL (higher is better) | −0.515 | −0.500 | +0.015 (0.012) | 9/10 |
+| Validation NLL (lower is better) | 0.367 | 0.363 | −0.004 (0.026) | 6/10 |
+| D-calibration not rejected (p > 0.05) | 10/10 | 9/10 | | |
+
+Means over the ten released splits. Training-only standardization improved test
+IBS and IBLL in 9 of 10 splits, with a smaller and less consistent gain in
+concordance. Validation NLL barely changed. Standardized fits stopped earlier
+(best epoch 6–14 vs 10–28), and no fit reached the 100-epoch cap. Splits share
+patients, so these are descriptive differences across splits, not independent
+tests. The 20 fits took 13.4 minutes on one CPU with 4 threads.
 
 ### Paper reproduction (our own implementation, not the upstream model)
 
