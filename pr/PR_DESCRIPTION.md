@@ -210,16 +210,13 @@ reproduction only.
 | --- | --- |
 | GBSG dataset, HDF5 conversion and GBSG task | Aritra |
 | GBSG released-split mapping and time convention | NJ |
-| SUPPORT2 source-data/cohort audit | Aritra |
 | SUPPORT2 task, released-split mapping and time convention | NJ |
 | Survival-curve metrics (C^td, IBS, IBLL, `survival_curve_metrics_fn`) | NJ |
 | D-calibration and input validation | Aritra |
 | Cox/DeepSurv/MDN benchmark and calibration replay | Aritra |
 | Integration with the upstream model (duration/event outputs), pipeline example and workflow docs | Aritra |
 | GBSG standardization option and ablation design | Aritra |
-| Original Survival MDN model and VM execution of the 300-fit reproduction | NJ |
-| Reproduction analysis | Both; Aritra independently checked selections, calibration and checkpoints |
-| Twenty-fit upstream-model ablation execution and verification | NJ ran the fits; Aritra verified records, metrics and checkpoint predictions |
+| Our original model and the 300-fit reproduction run and analysis | NJ (run on NJ's VM; baselines and verification by Aritra) |
 
 ## Notes for reviewers
 
@@ -243,4 +240,5 @@ reproduction only.
 - **Docs placement.** `docs/index.rst` lists the workflow guide under Quick
   Navigation. We are retaining that placement for review and can move the
   page if maintainers prefer tutorials/examples.
+
 
