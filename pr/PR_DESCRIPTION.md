@@ -5,8 +5,10 @@ survival-curve metrics for SurvivalMDN**
 
 Open from `arittrosaha:aritra/survival-pipeline-integration` into
 `sunlabuiuc:master`, with "Allow edits by maintainers" ticked. Reviewed in
-`enjaybaze/PyHealth#2`, currently at `e32a85b`. Everything below the line is the
-PR body. Fill in the issue number and the ablation results before opening.
+[PR #2](https://github.com/enjaybaze/PyHealth/pull/2), reviewed by both contributors at
+[`230889c`](https://github.com/arittrosaha/PyHealth/commit/230889ca322267fa158141923f38a291bcf2822d). The local
+branch has since been rebased onto upstream `ea26a4b` and is awaiting publication
+and CI on the rebased version. Everything below the line is the proposed PR body.
 
 ---
 
@@ -19,14 +21,13 @@ Ugochukwu (NJ) Njoku (@enjaybaze), Georgia Tech CSE 6250
 MLHC 2022 ([PMLR](https://proceedings.mlr.press/v182/han22a.html),
 [arXiv](https://arxiv.org/abs/2208.10759))
 
-**Scope agreed in:** #&lt;issue number&gt;
+**Scope agreed in:** [sunlabuiuc/PyHealth#1357](https://github.com/sunlabuiuc/PyHealth/issues/1357)
 
 ## Description
 
 This PR builds a complete survival workflow around the `SurvivalMDN` model
-merged in #1279. It adds the paper's two benchmark datasets as PyHealth
-datasets and tasks, and the metrics needed to evaluate predicted survival
-curves. **The upstream model, its tests and the `Trainer` are unchanged.**
+merged in #1279. It adds a GBSG dataset and time-to-event tasks for GBSG and
+the existing SUPPORT2 dataset, plus metrics for predicted survival curves. **The upstream model, its tests and the `Trainer` are unchanged.**
 
 - **GBSG dataset:** `GBSGDataset`, plus `prepare_gbsg_csv`, which converts the
   public DeepSurv HDF5 file to CSV and records its provenance.
@@ -45,8 +46,11 @@ curves. **The upstream model, its tests and the `Trainer` are unchanged.**
   time-dependent concordance (Antolini C^td), integrated Brier score and
   integrated binomial log-likelihood with IPCW weighting at censoring-quantile
   horizons, D-calibration (Haider et al.), and `survival_curve_metrics_fn`.
-  PyHealth had no metrics for full survival curves; #1279 evaluates them only
-  inside its example.
+  These complement `pyhealth.metrics.survival`, added in #1368, which provides
+  Harrell's C-index and single-horizon Brier/AUC scores. Our module adds
+  IPCW curve comparisons, integrated scores and D-calibration with the
+  Survival MDN evaluator's conventions. The APIs have distinct names and
+  weighting/tie conventions; substituting one for the other changes scores.
 - **Examples:** an end-to-end pipeline (`examples/survival_pipeline.py`), a
   loading and checkpoint-reload demo, and an optional benchmark that compares
   `SurvivalMDN` with Cox and DeepSurv on the released splits.
@@ -74,8 +78,14 @@ epoch. Benchmark tests skip when the optional packages are missing.
 
 ## How it was checked
 
-- **CI:** at `e32a85b`, the full core suite passed (1,834 passed, 105 skipped,
-  450 subtests), along with the NLP tests and `tools/check_pr_rules.py`.
+- **Published-head CI:** at `230889c`, the full core suite passed (1,834 passed,
+  105 skipped, 450 subtests), along with both NLP tests and contribution rules.
+  [Python/NLP checks](https://github.com/enjaybaze/PyHealth/actions/runs/41726846075)
+  and [contribution rules](https://github.com/enjaybaze/PyHealth/actions/runs/41726846093)
+  both passed. These checks cover the published `230889c` head, before the
+  local rebase onto `ea26a4b`. Update the head and CI links after publishing
+  and validating the rebased branch; CI on that revision is still pending.
+- **Local upstream compatibility:** At local head `f9767e6`, 2,185 core tests and 676 subtests passed, with 127 skips and no test failures. Both five-epoch native pilots, targeted API/workflow documentation, package build, lint and contribution checks passed. Local CPU Python 3.12.14/Torch 2.7.1 differs from CI. Python waited in process-tracker finalization after the core summary and was interrupted; a clean supported CI run on the rebased head is still required.
 - **Metrics vs. the paper's evaluator:** with the same inputs, our C^td, IBS
   and IBLL match the authors' released `metrics.py` to within 2e-15. The one
   exception is described under "Notes for reviewers".
@@ -88,14 +98,16 @@ epoch. Benchmark tests skip when the optional packages are missing.
 
 ## Results
 
-### Ablation with PyHealth's SurvivalMDN
+### Ablation with PyHealth's SurvivalMDN (aligned-grid evaluation)
 
 Does training-only feature standardization change GBSG performance with the
 upstream model? Both conditions ran on all ten released splits, with the model
 and training settings fixed (10 components, 3 × 32 hidden layers, softplus,
 RMSprop at 1e-3, at most 100 epochs, patience 10, seed 1). Checkpoints were
 chosen by validation NLL only, and time labels were identical in both
-conditions. The primary comparison is test IBS at the widest horizon.
+conditions. The primary comparison is test IBS at the widest horizon using
+aligned prediction/scoring grids, separately from the original reproduction
+results below that use the reference-compatible convention.
 
 | Metric (test unless noted) | Raw | Standardized | Standardized − raw (SD) | Standardized better |
 | --- | --- | --- | --- | --- |
@@ -110,7 +122,7 @@ independent tests. Training-only standardization improved test IBS and IBLL in
 9 of 10 splits, with a smaller and less consistent gain in concordance.
 Validation NLL barely changed. Standardized fits stopped earlier (best epoch
 6–14 vs 10–28), and no fit reached the 100-epoch cap. The 20 fits took 13.4
-minutes on one CPU with 4 threads. All 20 records were checked independently,
+minutes in a CPU-only run with 4 threads. All 20 records were checked independently,
 and every best checkpoint reloads to the saved predictions within 1e-6.
 
 D-calibration p-values by split (raw / standardized):
@@ -145,8 +157,9 @@ only.
 | SUPPORT | DeepSurv | 0.604 ± 0.008 | 0.191 | −0.563 | 0.609 / 0.190 / −0.559 |
 | SUPPORT | Survival MDN | 0.626 ± 0.010 | 0.189 | −0.559 | 0.628 / 0.190 / −0.559 |
 
-Means over the ten released test splits. IBS and IBLL use the authors'
-widest-horizon convention, to match the paper.
+Means over the ten released test splits. IBS and IBLL are **reference-compatible**:
+they use the authors' widest-horizon evaluator convention, separately from
+the aligned-grid ablation above.
 
 - Survival MDN matches the paper within two published standard errors on all
   six of its comparisons; 17 of the 18 comparisons pass overall. The exception
@@ -184,7 +197,8 @@ fork's commit history or our correspondence.
 | Oct 29 | 300-fit reproduction run on our own model; overlap with #1279 found while preparing this PR |
 | Oct 29–30 | Course staff and maintainers contacted; Dataset + Task scope approved; this branch rebuilt on upstream `master` around the merged model |
 | Oct 30–31 | Optional GBSG standardization added; CI passes at `e32a85b` |
-| Nov | Ablation with the upstream model (above) |
+| Nov 3 | Twenty upstream-model ablation outputs independently verified; slow tests trimmed and rerun by both contributors |
+| Nov 4 | Local rebase onto upstream `ea26a4b`; compatibility checks and metrics API documentation updated |
 
 **What we dropped:** our own `pyhealth/models/survival_mdn.py`. It used the same
 file and class name as #1279, so it stays in our fork for the course
@@ -196,13 +210,16 @@ reproduction only.
 | --- | --- |
 | GBSG dataset, HDF5 conversion and GBSG task | Aritra |
 | GBSG released-split mapping and time convention | NJ |
+| SUPPORT2 source-data/cohort audit | Aritra |
 | SUPPORT2 task, released-split mapping and time convention | NJ |
 | Survival-curve metrics (C^td, IBS, IBLL, `survival_curve_metrics_fn`) | NJ |
 | D-calibration and input validation | Aritra |
 | Cox/DeepSurv/MDN benchmark and calibration replay | Aritra |
 | Integration with the upstream model (duration/event outputs), pipeline example and workflow docs | Aritra |
 | GBSG standardization option and ablation design | Aritra |
-| Our original model and the 300-fit reproduction run and analysis | NJ (run on NJ's VM; baselines and verification by Aritra) |
+| Original Survival MDN model and VM execution of the 300-fit reproduction | NJ |
+| Reproduction analysis | Both; Aritra independently checked selections, calibration and checkpoints |
+| Twenty-fit upstream-model ablation execution and verification | NJ ran the fits; Aritra verified records, metrics and checkpoint predictions |
 
 ## Notes for reviewers
 
@@ -224,5 +241,6 @@ reproduction only.
   and the released splits from the
   [authors' repository](https://github.com/XintianHan/Survival-MDN).
 - **Docs placement.** `docs/index.rst` lists the workflow guide under Quick
-  Navigation. We asked in #pyhealth-questions where you'd prefer it and will
-  move it if needed.
+  Navigation. We are retaining that placement for review and can move the
+  page if maintainers prefer tutorials/examples.
+
