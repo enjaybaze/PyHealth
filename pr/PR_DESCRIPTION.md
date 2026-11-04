@@ -4,11 +4,12 @@ Title: **Add GBSG/SUPPORT2 time-to-event tasks, released-split helpers and
 survival-curve metrics for SurvivalMDN**
 
 Open from `arittrosaha:aritra/survival-pipeline-integration` into
-`sunlabuiuc:master`, with "Allow edits by maintainers" ticked. Reviewed in
-[PR #2](https://github.com/enjaybaze/PyHealth/pull/2), reviewed by both contributors at
-[`230889c`](https://github.com/arittrosaha/PyHealth/commit/230889ca322267fa158141923f38a291bcf2822d). The local
-branch has since been rebased onto upstream `ea26a4b` and is awaiting publication
-and CI on the rebased version. Everything below the line is the proposed PR body.
+`sunlabuiuc:master`, with "Allow edits by maintainers" ticked. The published
+head is [`f9767e6`](https://github.com/arittrosaha/PyHealth/commit/f9767e6d7bb875e8b204ea073757a8f3cb0fd961),
+rebased onto upstream `ea26a4b`. [PR #2](https://github.com/enjaybaze/PyHealth/pull/2)
+compares those same revisions. Both contributors reviewed the earlier
+`230889c` version; the rebased changes await our final joint review.
+Everything below the line is the proposed PR body.
 
 ---
 
@@ -78,14 +79,15 @@ epoch. Benchmark tests skip when the optional packages are missing.
 
 ## How it was checked
 
-- **Published-head CI:** at `230889c`, the full core suite passed (1,834 passed,
-  105 skipped, 450 subtests), along with both NLP tests and contribution rules.
-  [Python/NLP checks](https://github.com/enjaybaze/PyHealth/actions/runs/41726846075)
-  and [contribution rules](https://github.com/enjaybaze/PyHealth/actions/runs/41726846093)
-  both passed. These checks cover the published `230889c` head, before the
-  local rebase onto `ea26a4b`. Update the head and CI links after publishing
-  and validating the rebased branch; CI on that revision is still pending.
-- **Local upstream compatibility:** At local head `f9767e6`, 2,185 core tests and 676 subtests passed, with 127 skips and no test failures. Both five-epoch native pilots, targeted API/workflow documentation, package build, lint and contribution checks passed. Local CPU Python 3.12.14/Torch 2.7.1 differs from CI. Python waited in process-tracker finalization after the core summary and was interrupted; a clean supported CI run on the rebased head is still required.
+- **Published-head CI:** at `f9767e6`,
+  [Python/NLP checks](https://github.com/enjaybaze/PyHealth/actions/runs/41885873661)
+  passed: 2,206 core tests, 106 skips and 672 passing subtests, plus both NLP tests and coverage reporting. [Contribution rules](https://github.com/enjaybaze/PyHealth/actions/runs/41885873120)
+  also passed. This is the published rebased head compared with upstream
+  `ea26a4b`.
+- **Additional local compatibility:** both five-epoch native GBSG/SUPPORT
+  pilots, focused compatibility checks, targeted API/workflow documentation,
+  package build and lint passed. The supported CI result above is the
+  full-suite validation for this head.
 - **Metrics vs. the paper's evaluator:** with the same inputs, our C^td, IBS
   and IBLL match the authors' released `metrics.py` to within 2e-15. The one
   exception is described under "Notes for reviewers".
@@ -198,7 +200,7 @@ fork's commit history or our correspondence.
 | Oct 29–30 | Course staff and maintainers contacted; Dataset + Task scope approved; this branch rebuilt on upstream `master` around the merged model |
 | Oct 30–31 | Optional GBSG standardization added; CI passes at `e32a85b` |
 | Nov 3 | Twenty upstream-model ablation outputs independently verified; slow tests trimmed and rerun by both contributors |
-| Nov 4 | Local rebase onto upstream `ea26a4b`; compatibility checks and metrics API documentation updated |
+| Nov 4 | Rebase onto upstream `ea26a4b` published at `f9767e6`; PR #2 comparison base advanced, compatibility checks and metrics API documentation updated |
 
 **What we dropped:** our own `pyhealth/models/survival_mdn.py`. It used the same
 file and class name as #1279, so it stays in our fork for the course
@@ -240,5 +242,6 @@ reproduction only.
 - **Docs placement.** `docs/index.rst` lists the workflow guide under Quick
   Navigation. We are retaining that placement for review and can move the
   page if maintainers prefer tutorials/examples.
+
 
 
