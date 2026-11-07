@@ -28,7 +28,8 @@ MLHC 2022 ([PMLR](https://proceedings.mlr.press/v182/han22a.html),
 
 This PR builds a complete survival workflow around the `SurvivalMDN` model
 merged in #1279. It adds a GBSG dataset and time-to-event tasks for GBSG and
-the existing SUPPORT2 dataset, plus metrics for predicted survival curves. **The upstream model, its tests and the `Trainer` are unchanged.**
+the existing SUPPORT2 dataset, plus metrics for predicted survival curves.
+**The upstream model, its tests and the `Trainer` are unchanged.**
 
 - **GBSG dataset:** `GBSGDataset`, plus `prepare_gbsg_csv`, which converts the
   public DeepSurv HDF5 file to CSV and records its provenance.
@@ -208,17 +209,22 @@ reproduction only.
 
 **Who built what:**
 
-| Component | Built by |
+| Component | Who |
 | --- | --- |
 | GBSG dataset, HDF5 conversion and GBSG task | Aritra |
 | GBSG released-split mapping and time convention | NJ |
-| SUPPORT2 task, released-split mapping and time convention | NJ |
+| SUPPORT cohort audit: matched the released cohort to the source data and reconstructed its features and outcomes | Aritra |
+| SUPPORT2 task, released-split mapping and time convention, built on that audit | NJ |
 | Survival-curve metrics (C^td, IBS, IBLL, `survival_curve_metrics_fn`) | NJ |
 | D-calibration and input validation | Aritra |
 | Cox/DeepSurv/MDN benchmark and calibration replay | Aritra |
 | Integration with the upstream model (duration/event outputs), pipeline example and workflow docs | Aritra |
 | GBSG standardization option and ablation design | Aritra |
-| Our original model and the 300-fit reproduction run and analysis | NJ (run on NJ's VM; baselines and verification by Aritra) |
+| Ablation: 20 fits run on NJ's VM, outputs verified independently | NJ ran the fits; Aritra verified them |
+| Our original Survival MDN model (kept in our fork) | NJ |
+| 300-fit run plan and baseline settings | Aritra |
+| 300-fit reproduction run on NJ's VM | NJ |
+| Reproduction analysis | Joint: NJ wrote the analysis and tables; Aritra checked the outputs, model selection and calibration |
 
 ## Notes for reviewers
 
@@ -242,6 +248,3 @@ reproduction only.
 - **Docs placement.** `docs/index.rst` lists the workflow guide under Quick
   Navigation. We are retaining that placement for review and can move the
   page if maintainers prefer tutorials/examples.
-
-
-
